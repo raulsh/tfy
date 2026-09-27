@@ -5,3 +5,4 @@ internal/web/dist/*
 !internal/web/dist/.gitkeep
 *.test
 coverage.out
+.claude/settings.local.json
