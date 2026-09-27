@@ -3,9 +3,9 @@ package api
 import (
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/pipeline"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/pipeline"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 func (s *Server) intakeRoutes(r fiber.Router) {

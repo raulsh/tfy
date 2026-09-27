@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Settings is the subset of Claude Code settings a factory run generates and
+// Settings is the subset of Claude Code settings a tfy run generates and
 // passes with --settings. Everything else comes from nowhere: runs use
 // --setting-sources "".
 type Settings struct {
@@ -69,7 +69,7 @@ var DenyRules = []string{
 }
 
 // GuardSettings builds settings that route every shell command through
-// guardCommand (e.g. `/home/u/.thefactory/bin/thefactory hook-guard --stage
+// guardCommand (e.g. `/home/u/.tfy/bin/tfy hook-guard --stage
 // develop`). trustedRepos, when set, tells auto mode which checkouts under
 // the working directory are in scope.
 func GuardSettings(guardCommand string, trustedRepos []string) Settings {

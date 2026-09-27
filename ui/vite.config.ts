@@ -2,7 +2,7 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// `make dev` runs `thefactory serve --dev` on :7420; the dev server proxies
+// `make dev` runs `tfy serve --dev` on :7420; the dev server proxies
 // the API to it. `make build` writes the bundle into the Go embed directory.
 export default defineConfig({
 	plugins: [react()],

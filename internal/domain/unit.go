@@ -1,4 +1,4 @@
-// Package domain holds thefactory's core vocabulary: units of work, the
+// Package domain holds tfy's core vocabulary: units of work, the
 // states they move through, and the rules for moving.
 package domain
 
@@ -206,5 +206,5 @@ func Slug(title string, max int) string {
 
 // BranchName is the branch a unit's changes live on in every repo.
 func BranchName(seq int64, title string) string {
-	return fmt.Sprintf("factory/u%d-%s", seq, Slug(title, 40))
+	return fmt.Sprintf("tfy/u%d-%s", seq, Slug(title, 40))
 }

@@ -1,4 +1,4 @@
-module github.com/raulsh/thefactory
+module github.com/raulsh/tfy
 
 go 1.26.4
 

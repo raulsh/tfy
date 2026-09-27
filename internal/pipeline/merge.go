@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/gh"
-	"github.com/raulsh/thefactory/internal/jobs"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/gh"
+	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // merge merges every pull request of the unit, but only after checking all

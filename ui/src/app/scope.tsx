@@ -39,20 +39,20 @@ function store(key: string, value: string | undefined) {
 
 // Scope is the project and time window the list pages show.
 export function ScopeProvider({ children }: { children: ReactNode }) {
-	const [projectId, setProject] = useState<string | undefined>(() => stored("thefactory-project", undefined));
-	const [range, setRangeState] = useState<Range>(() => stored<Range>("thefactory-range", "all") ?? "all");
+	const [projectId, setProject] = useState<string | undefined>(() => stored("tfy-project", undefined));
+	const [range, setRangeState] = useState<Range>(() => stored<Range>("tfy-range", "all") ?? "all");
 	const value = useMemo<ScopeValue>(() => {
 		const since = range === "all" ? null : dayjs().subtract(range === "24h" ? 1 : range === "7d" ? 7 : 30, "day");
 		return {
 			projectId,
 			setProjectId: (id) => {
 				setProject(id);
-				store("thefactory-project", id);
+				store("tfy-project", id);
 			},
 			range,
 			setRange: (r) => {
 				setRangeState(r);
-				store("thefactory-range", r);
+				store("tfy-range", r);
 			},
 			inRange: (iso) => !since || dayjs(iso).isAfter(since),
 		};

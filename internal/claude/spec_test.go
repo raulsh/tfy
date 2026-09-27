@@ -14,7 +14,7 @@ func TestDevelopArgs(t *testing.T) {
 		Model:         "opus",
 		Effort:        "high",
 		MaxBudgetUSD:  20,
-		SettingsPath:  "/w/.factory/settings.json",
+		SettingsPath:  "/w/.tfy/settings.json",
 		ResumeSession: "sid-1",
 		ForkSession:   true,
 	}
@@ -30,7 +30,7 @@ func TestDevelopArgs(t *testing.T) {
 		"--model":              "opus",
 		"--effort":             "high",
 		"--max-budget-usd":     "20",
-		"--settings":           "/w/.factory/settings.json",
+		"--settings":           "/w/.tfy/settings.json",
 		"--resume":             "sid-1",
 		"--tools":              "Bash,Read,Write,Edit,NotebookEdit,WebFetch,WebSearch",
 	}

@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 func newID() string {

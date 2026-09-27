@@ -10,7 +10,7 @@ interface ThemeModeValue {
 }
 
 const ThemeModeContext = createContext<ThemeModeValue | null>(null);
-const STORAGE_KEY = "thefactory-theme";
+const STORAGE_KEY = "tfy-theme";
 
 function readPreference(): ModePreference {
 	// ?theme=dark|light|system picks the theme, e.g. for screenshots.

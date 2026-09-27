@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs thefactory against fake claude and gh executables (the pipeline test
+# Runs tfy against fake claude and gh executables (the pipeline test
 # helpers) and a local "GitHub" remote: the whole pipeline works, instantly
 # and for free. For UI work and demos; nothing leaves the machine.
 set -euo pipefail
@@ -23,14 +23,14 @@ done
 git init -q -b main "$DEMO/seed"
 git -C "$DEMO/seed" -c user.name=demo -c user.email=demo@example.com commit -q --allow-empty -m "init"
 git clone -q --bare "$DEMO/seed" "$DEMO/remotes/acme/app.git"
-go build -o "$DEMO/thefactory" ./cmd/thefactory
+go build -o "$DEMO/tfy" ./cmd/tfy
 
-export THEFACTORY_HOME="$DEMO/home"
-export THEFACTORY_CLAUDE_BIN="$DEMO/fake-claude"
-export THEFACTORY_GH_BIN="$DEMO/fake-gh"
+export TFY_HOME="$DEMO/home"
+export TFY_CLAUDE_BIN="$DEMO/fake-claude"
+export TFY_GH_BIN="$DEMO/fake-gh"
 # Slack channel histories are read from $DEMO/control/slack/<channel id>.json.
-export THEFACTORY_SLK_BIN="$DEMO/fake-slk"
+export TFY_SLK_BIN="$DEMO/fake-slk"
 export FAKE_REMOTES="$DEMO/remotes"
 export FAKE_GH_STATE="$DEMO/gh-state"
 echo "demo data in $DEMO (link acme/app to a project to try the pipeline)"
-exec "$DEMO/thefactory" serve --port "$PORT" "$@"
+exec "$DEMO/tfy" serve --port "$PORT" "$@"

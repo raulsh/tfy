@@ -16,16 +16,16 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/raulsh/thefactory/internal/claude"
-	"github.com/raulsh/thefactory/internal/config"
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/events"
-	"github.com/raulsh/thefactory/internal/gh"
-	"github.com/raulsh/thefactory/internal/git"
-	"github.com/raulsh/thefactory/internal/jobs"
-	"github.com/raulsh/thefactory/internal/slack"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/claude"
+	"github.com/raulsh/tfy/internal/config"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/events"
+	"github.com/raulsh/tfy/internal/gh"
+	"github.com/raulsh/tfy/internal/git"
+	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/slack"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // The test binary doubles as fake `claude` and `gh` executables (the helper
@@ -64,7 +64,7 @@ func gitDirs(root string) []string {
 
 func fakeClaude() int {
 	args := os.Args[1:]
-	// Enough of the CLI for `thefactory doctor`, so the fakes can also back a
+	// Enough of the CLI for `tfy doctor`, so the fakes can also back a
 	// demo server.
 	if len(args) > 0 && args[0] == "--version" {
 		fmt.Println("2.1.283 (Claude Code, fake)")
@@ -158,7 +158,7 @@ func fakeClaude() int {
 	case strings.Contains(schema, "tests_passed"):
 		for _, d := range gitDirs(cwd) {
 			b, _ := exec.Command("git", "-C", d, "rev-parse", "--abbrev-ref", "HEAD").Output()
-			if !strings.HasPrefix(strings.TrimSpace(string(b)), "factory/") {
+			if !strings.HasPrefix(strings.TrimSpace(string(b)), "tfy/") {
 				continue
 			}
 			// Append, so every development round has something to commit.
@@ -657,7 +657,7 @@ func TestUnitFromIdeaToMergedPR(t *testing.T) {
 	if ur.ReviewedSha == "" || ur.ReviewedSha != rm.Reviewed["acme/app"] {
 		t.Errorf("reviewed sha %q, review says %v", ur.ReviewedSha, rm.Reviewed)
 	}
-	if ur.PublishState != PublishPROpen || ur.PrNumber != 1 || ur.Branch != "factory/u1-health-lies-when-the-db-is-down" {
+	if ur.PublishState != PublishPROpen || ur.PrNumber != 1 || ur.Branch != "tfy/u1-health-lies-when-the-db-is-down" {
 		t.Fatalf("published repo = %+v", ur)
 	}
 	remote := filepath.Join(h.remotes, "acme", "app.git")

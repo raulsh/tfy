@@ -20,7 +20,7 @@ const nav: { to: string; label: string; icon: ReactNode; badge?: "inbox" }[] = [
 
 function readCollapsed(): boolean {
 	try {
-		return localStorage.getItem("thefactory-nav") === "collapsed";
+		return localStorage.getItem("tfy-nav") === "collapsed";
 	} catch {
 		return false;
 	}
@@ -35,7 +35,7 @@ export function Shell() {
 	const toggle = () => {
 		setCollapsed((c) => {
 			try {
-				localStorage.setItem("thefactory-nav", c ? "open" : "collapsed");
+				localStorage.setItem("tfy-nav", c ? "open" : "collapsed");
 			} catch {
 				// not remembered
 			}
@@ -117,13 +117,13 @@ function Wordmark({ collapsed }: { collapsed: boolean }) {
 			}}
 		>
 			<svg width="22" height="22" viewBox="0 0 32 32" role="img">
-				<title>thefactory</title>
+				<title>tfy</title>
 				<rect width="32" height="32" rx="7" fill="var(--tf-text)" />
 				<path d="M8 23V13l5 3v-3l5 3v-3l6 3.5V23z" fill="#7FB4FA" />
 			</svg>
 			{!collapsed && (
 				<span>
-					the<span style={{ color: "var(--tf-accent)" }}>factory</span>
+					t<span style={{ color: "var(--tf-accent)" }}>f</span>y
 				</span>
 			)}
 		</span>
@@ -209,7 +209,7 @@ function LiveIndicator({ state, collapsed }: { state: LiveState; collapsed: bool
 	const tone = state === "live" ? "ok" : state === "connecting" ? "warn" : "error";
 	const label = state === "live" ? "Live" : state === "connecting" ? "Connecting…" : "Offline";
 	return (
-		<Tooltip title={collapsed ? label : "Updates stream from thefactory as they happen"} placement="right">
+		<Tooltip title={collapsed ? label : "Updates stream from tfy as they happen"} placement="right">
 			<div style={{ ...navButton(collapsed), cursor: "default", color: "var(--tf-text2)", fontSize: 12 }}>
 				<StatusDot tone={tone} />
 				{!collapsed && label}

@@ -7,13 +7,13 @@ import (
 )
 
 func TestRenderAll(t *testing.T) {
-	repos := []Repo{{Dir: "api", FullName: "acme/api", DefaultBranch: "main", Branch: "factory/u7-fix"}}
+	repos := []Repo{{Dir: "api", FullName: "acme/api", DefaultBranch: "main", Branch: "tfy/u7-fix"}}
 	cases := map[string]any{
 		"system": System{Repos: repos, Instructions: []Instructions{{Repo: "acme/api", File: "CLAUDE.md", Content: "Run make test.\n"}}},
 		"define": Define{Label: "U-7", Project: "Acme", Kind: "bugfix", Title: "Health returns 500", Description: "When the DB is down",
 			Feedback: []Feedback{{Author: "ana", At: "2026-09-27 10:00", Channel: "support", Text: "the status page is red"}}},
 		"plan":    Plan{Label: "U-7", Title: "Health returns 500", Repos: repos},
-		"develop": Develop{Label: "U-7", Title: "Health returns 500", Branch: "factory/u7-fix", Targets: repos, Criteria: []Criterion{{ID: "AC-1", Text: "returns 200 degraded"}}},
+		"develop": Develop{Label: "U-7", Title: "Health returns 500", Branch: "tfy/u7-fix", Targets: repos, Criteria: []Criterion{{ID: "AC-1", Text: "returns 200 degraded"}}},
 	}
 	for name, data := range cases {
 		text, version, err := Render(name, data)

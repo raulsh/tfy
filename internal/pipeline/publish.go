@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // Publish states of a unit's repository.
@@ -134,7 +134,7 @@ func (p *Pipeline) credentialArgs(url string) []string {
 // ensurePR returns the branch's pull request, opening it if there is none.
 // With siblings set, it rewrites the description to link them.
 func (p *Pipeline) ensurePR(ctx context.Context, u db.Unit, ur db.ListUnitReposRow, spec SpecMeta, draft bool, siblings []db.ListUnitReposRow) (int, string, error) {
-	body, err := os.CreateTemp("", "thefactory-pr-*.md")
+	body, err := os.CreateTemp("", "tfy-pr-*.md")
 	if err != nil {
 		return 0, "", err
 	}
@@ -194,6 +194,6 @@ func prBody(u db.Unit, ur db.ListUnitReposRow, spec SpecMeta, siblings []db.List
 	if len(others) > 0 {
 		b.WriteString("### Part of a change across repositories\n\n" + strings.Join(others, "\n") + "\n\n")
 	}
-	fmt.Fprintf(&b, "---\n%s · %s · opened by thefactory\n", domain.Label(u.Seq), u.Kind)
+	fmt.Fprintf(&b, "---\n%s · %s · opened by tfy\n", domain.Label(u.Seq), u.Kind)
 	return b.String()
 }

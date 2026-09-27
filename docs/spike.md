@@ -10,7 +10,7 @@ Run on 2026-09-27 against a local sandbox: a unit-style workspace with two git r
 | 2 | Do `--settings` deny rules and hooks apply with empty setting sources? Do path-scoped allow rules work? | **Yes to all.** Hooks fire and deny rules apply. `Write(./docs/**)` in `dontAsk` allowed `docs/note.md` and denied `repo-b/note.md` (`q2-edit`). | Define and plan profiles can write only to `docs/`. |
 | 2b | Are deny rules enough to stop pushes? | **No.** `Bash(git push *)` blocked `git push origin main`, but `git -C . push origin main` **ran** (`q2-denyonly`). | The guard hook is the primary control; deny rules are only a second layer. |
 | 3 | Does the guard see `git -C x push`, `sh -c "git push"`, and `Monitor`? | **Yes.** With matcher `Bash\|Monitor`, the hook received all of them; `tool_input.command` holds the raw string (`q2-deny`). | The guard must parse `-C`, `sh -c`, env prefixes and compound commands itself. |
-| 3b | What happens if the guard can't start? | **It fails open.** A missing binary gives `hook_response.exit_code: 127, outcome: "error"`, and the tool call **still ran** (`q9-missinghook`). | The runner aborts a run on any PreToolUse `hook_response` whose `exit_code` isn't 0 or 2. The guard binary lives at a stable path (`~/.thefactory/bin`). |
+| 3b | What happens if the guard can't start? | **It fails open.** A missing binary gives `hook_response.exit_code: 127, outcome: "error"`, and the tool call **still ran** (`q9-missinghook`). | The runner aborts a run on any PreToolUse `hook_response` whose `exit_code` isn't 0 or 2. The guard binary lives at a stable path (`~/.tfy/bin`). |
 | 4 | `autoMode.environment` with `$defaults`, and the init field for the permission mode | The settings containing `["$defaults", "Trusted repo: …"]` were accepted, since hooks still fired. The init field is **`permissionMode`** (`"auto"`). | The runner asserts that `init.permissionMode` equals the requested mode. |
 | 4b | Does auto mode work across sibling repos from a parent cwd that isn't a repo? | **Yes, in both variants.** Claude edited and committed in both repos with or without the environment entry (`q4-auto-*`). The classifier didn't block anything. | Keep the unit folder as the cwd and keep the trust entry (cheap insurance). |
 | 5 | Does `--json-schema` work with `--tools ""` and with other tools? | **Yes.** It adds a `StructuredOutput` tool. The result carries **`structured_output`** (an object), and `result` holds the same JSON as text (`q5-*`). | Read `structured_output`; fall back to parsing `result`. |
@@ -32,7 +32,7 @@ Run on 2026-09-27 against a local sandbox: a unit-style workspace with two git r
 
 ## End-to-end check (M0 exit)
 
-`thefactory dev claude --profile develop --trust repo-a,repo-b` ran against a unit-style workspace (a parent folder that is not a repo, two checkouts with **no remotes**), with the Go guard (`thefactory hook-guard`) wired in through generated settings:
+`tfy dev claude --profile develop --trust repo-a,repo-b` ran against a unit-style workspace (a parent folder that is not a repo, two checkouts with **no remotes**), with the Go guard (`tfy hook-guard`) wired in through generated settings:
 
 - The session started in `permissionMode: "auto"`.
 - Claude committed in both repos without being prompted.

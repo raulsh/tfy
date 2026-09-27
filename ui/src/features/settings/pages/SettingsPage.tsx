@@ -151,7 +151,7 @@ export default function SettingsPage() {
 								/>
 							)}
 							<div className="faint" style={{ fontSize: 12, padding: "10px 16px" }}>
-								Edit the config file to change these; restart thefactory to apply.
+								Edit the config file to change these; restart tfy to apply.
 							</div>
 						</Card>
 					</div>

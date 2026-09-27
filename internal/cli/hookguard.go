@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/raulsh/thefactory/internal/guard"
+	"github.com/raulsh/tfy/internal/guard"
 )
 
 func newHookGuardCmd() *cobra.Command {
@@ -37,18 +37,18 @@ func newHookGuardCmd() *cobra.Command {
 func runHookGuard(in io.Reader, errw io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(errw, "thefactory guard failed (%v); the command was blocked\n", r)
+			fmt.Fprintf(errw, "tfy guard failed (%v); the command was blocked\n", r)
 			code = 2
 		}
 	}()
 	data, err := io.ReadAll(io.LimitReader(in, 8<<20))
 	if err != nil {
-		fmt.Fprintln(errw, "thefactory guard could not read the hook input; the command was blocked")
+		fmt.Fprintln(errw, "tfy guard could not read the hook input; the command was blocked")
 		return 2
 	}
 	var input guard.Input
 	if err := json.Unmarshal(data, &input); err != nil {
-		fmt.Fprintln(errw, "thefactory guard could not parse the hook input; the command was blocked")
+		fmt.Fprintln(errw, "tfy guard could not parse the hook input; the command was blocked")
 		return 2
 	}
 	d := guard.Check(input)

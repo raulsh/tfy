@@ -1,6 +1,6 @@
 package claude
 
-// Profile is the tool and permission shape of one kind of factory run.
+// Profile is the tool and permission shape of one kind of tfy run.
 type Profile struct {
 	Name           string
 	Tools          []string // exact built-in tool set; empty means none
@@ -21,7 +21,7 @@ var docsOnly = []string{"Read", "Edit(./docs/**)", "Write(./docs/**)"}
 
 // Profiles, by run kind. The tool names are those of Claude Code 2.1.283,
 // which has no Glob or Grep tools (search goes through Bash) and exposes
-// scheduling and remote tools by default that no factory run gets.
+// scheduling and remote tools by default that no tfy run gets.
 var Profiles = map[string]Profile{
 	"triage": {
 		Name:           "triage",

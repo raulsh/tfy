@@ -59,7 +59,7 @@ export default function RunsPage() {
 				<div style={{ flex: 1, overflow: "auto" }}>
 					{!isLoading && items.length === 0 ? (
 						<EmptyState icon={<Activity size={28} />} title="No runs yet">
-							Every Claude session thefactory starts shows up here, live.
+							Every Claude session tfy starts shows up here, live.
 						</EmptyState>
 					) : (
 						<RunsTable runs={f.filtered} loading={isLoading} />

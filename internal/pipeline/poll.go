@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // prStates are the unit states whose pull requests are watched.
@@ -128,7 +128,7 @@ func (p *Pipeline) Recover(ctx context.Context) error {
 			_ = syscall.Kill(-int(r.Pid), syscall.SIGKILL)
 			p.Log.Warn("killed a run left over from the last process", "run", r.ID, "pid", r.Pid)
 		}
-		if err := p.Store.Q.InterruptRun(ctx, db.InterruptRunParams{Reason: "thefactory stopped during the run", Now: store.NowNull(), ID: r.ID}); err != nil {
+		if err := p.Store.Q.InterruptRun(ctx, db.InterruptRunParams{Reason: "tfy stopped during the run", Now: store.NowNull(), ID: r.ID}); err != nil {
 			return err
 		}
 	}
@@ -150,7 +150,7 @@ func (p *Pipeline) Recover(ctx context.Context) error {
 	}
 	for _, u := range units {
 		if u.Attention == "" && !p.Busy(ctx, u.ID) {
-			p.flag(ctx, u.ID, domain.AttentionInterrupted, "thefactory stopped before this step started; retry it")
+			p.flag(ctx, u.ID, domain.AttentionInterrupted, "tfy stopped before this step started; retry it")
 		}
 	}
 	return nil

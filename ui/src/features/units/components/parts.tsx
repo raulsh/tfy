@@ -292,9 +292,9 @@ function waitingText(u: Unit): string {
 		case "spec_review":
 			return "Read the spec. Approve it to start development, edit it, or ask Claude for a revision.";
 		case "releasing":
-			return "Merged. thefactory is writing the release notes and following CI on the merge commits.";
+			return "Merged. tfy is writing the release notes and following CI on the merge commits.";
 		case "awaiting_merge":
-			return "The review approved the change. Merge it from here (thefactory checks nothing changed since the review), or on GitHub.";
+			return "The review approved the change. Merge it from here (tfy checks nothing changed since the review), or on GitHub.";
 		default:
 			return "";
 	}
@@ -346,7 +346,7 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 			content: (
 				<div>
 					<p className="muted">
-						thefactory checks each one first: unchanged since the review, no conflicts. Then it merges them all.
+						tfy checks each one first: unchanged since the review, no conflicts. Then it merges them all.
 					</p>
 					<ul style={{ paddingLeft: 18 }}>
 						{openPRs.map((r) => (
@@ -451,7 +451,7 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 				<Tooltip
 					title={
 						primary === "approve-spec"
-							? "Starts development: Claude implements the spec, thefactory opens the pull requests and reviews them"
+							? "Starts development: Claude implements the spec, tfy opens the pull requests and reviews them"
 							: undefined
 					}
 				>

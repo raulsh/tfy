@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/prompts"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/prompts"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // ReviewMeta is the review run's structured output, stored with the review
@@ -24,7 +24,7 @@ type ReviewMeta struct {
 	Round    int                 `json:"round"`
 	Reviewed map[string]string   `json:"reviewed"` // repo → commit
 	Spec     []prompts.Criterion `json:"spec_criteria"`
-	Decision string              `json:"decision"` // approve | request_changes, after thefactory's own rules
+	Decision string              `json:"decision"` // approve | request_changes, after tfy's own rules
 }
 
 // CriterionVerdict is the reviewer's call on one acceptance criterion.
@@ -47,7 +47,7 @@ type Finding struct {
 // itself for the rest.
 const maxDiff = 400 << 10
 
-// decide turns the review into thefactory's decision. Only concrete
+// decide turns the review into tfy's decision. Only concrete
 // problems send work back: an unmet or partial criterion, or a blocker or
 // major finding. A criterion the reviewer could not verify (it cannot run
 // builds or tests; CI does) does not, whatever the reviewer's verdict.
@@ -288,7 +288,7 @@ func renderReview(u db.Unit, m ReviewMeta) string {
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "---\n%s · reviewed by thefactory\n", domain.Label(u.Seq))
+	fmt.Fprintf(&b, "---\n%s · reviewed by tfy\n", domain.Label(u.Seq))
 	return b.String()
 }
 
@@ -303,7 +303,7 @@ func (p *Pipeline) postReview(ctx context.Context, u db.Unit, targets []db.ListU
 	if err != nil || !domain.ParseProjectSettings(project.Settings).PostReviewToGitHub {
 		return
 	}
-	f, err := os.CreateTemp("", "thefactory-review-*.md")
+	f, err := os.CreateTemp("", "tfy-review-*.md")
 	if err != nil {
 		return
 	}

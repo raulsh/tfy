@@ -55,10 +55,10 @@ func TestEveryStateHasAStage(t *testing.T) {
 
 func TestBranchName(t *testing.T) {
 	got := BranchName(42, "Fix: /health returns 500 when the DB is down!")
-	if got != "factory/u42-fix-health-returns-500-when-the-db-is" {
+	if got != "tfy/u42-fix-health-returns-500-when-the-db-is" {
 		t.Errorf("got %q", got)
 	}
-	if BranchName(1, "¡¿!") != "factory/u1-unit" {
+	if BranchName(1, "¡¿!") != "tfy/u1-unit" {
 		t.Error("empty slugs fall back to 'unit'")
 	}
 }

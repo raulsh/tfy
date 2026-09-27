@@ -13,16 +13,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/raulsh/thefactory/internal/claude"
-	"github.com/raulsh/thefactory/internal/config"
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/events"
-	"github.com/raulsh/thefactory/internal/gh"
-	"github.com/raulsh/thefactory/internal/git"
-	"github.com/raulsh/thefactory/internal/jobs"
-	"github.com/raulsh/thefactory/internal/slack"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/claude"
+	"github.com/raulsh/tfy/internal/config"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/events"
+	"github.com/raulsh/tfy/internal/gh"
+	"github.com/raulsh/tfy/internal/git"
+	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/slack"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // Job kinds.
@@ -97,7 +97,7 @@ func New(d Deps) *Pipeline {
 	d.Jobs.OnInterrupted = func(ctx context.Context, j db.Job) {
 		if j.UnitID.Valid {
 			p.flag(ctx, j.UnitID.String, domain.AttentionInterrupted,
-				fmt.Sprintf("thefactory stopped during %s; check the workspace, then retry", j.Kind))
+				fmt.Sprintf("tfy stopped during %s; check the workspace, then retry", j.Kind))
 		}
 	}
 	d.Jobs.OnChange = func(j db.Job) {

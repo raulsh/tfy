@@ -122,8 +122,8 @@ export default function UnitsPage() {
 				<div style={{ flex: 1, overflow: "auto" }}>
 					{noProjects ? (
 						<EmptyState icon={<Boxes size={28} />} title="Start with a project">
-							A project links the GitHub repositories thefactory works on. Create one under{" "}
-							<a href="/projects">Projects</a>, then add units to it.
+							A project links the GitHub repositories tfy works on. Create one under <a href="/projects">Projects</a>,
+							then add units to it.
 						</EmptyState>
 					) : !isLoading && items.length === 0 ? (
 						<EmptyState icon={<Boxes size={28} />} title="No units yet">

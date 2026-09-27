@@ -22,7 +22,7 @@ export function ReleasePanel({ unit }: { unit: UnitDetail }) {
 		return (
 			<Card>
 				<EmptyState icon={<Rocket size={28} />} title="Nothing released yet">
-					Once the pull requests are merged, thefactory writes release notes and follows CI on the merge commits.
+					Once the pull requests are merged, tfy writes release notes and follows CI on the merge commits.
 				</EmptyState>
 			</Card>
 		);

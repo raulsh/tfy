@@ -31,7 +31,7 @@ const defs: FacetDef<Feedback>[] = [
 	{ key: "author", label: "Author", get: (f) => f.author || undefined },
 ];
 
-// The inbox: every Slack message thefactory has read, how triage judged it,
+// The inbox: every Slack message tfy has read, how triage judged it,
 // and where it went. Pick messages to turn them into a unit by hand.
 export default function InboxPage() {
 	const { projectId, range, setRange, inRange } = useScope();
@@ -130,7 +130,7 @@ export default function InboxPage() {
 					{!isLoading && items.length === 0 ? (
 						<EmptyState icon={<Inbox size={28} />} title={slackOff ? "Slack intake is off" : "Nothing in the inbox"}>
 							{slackOff
-								? "Install slk and run `slk configure`, then restart thefactory."
+								? "Install slk and run `slk configure`, then restart tfy."
 								: "Add Slack channels to a project (Projects → Slack): every new message is read, triaged, and shows up here."}
 						</EmptyState>
 					) : (

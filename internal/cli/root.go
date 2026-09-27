@@ -1,4 +1,4 @@
-// Package cli holds thefactory's commands.
+// Package cli holds tfy's commands.
 package cli
 
 import (
@@ -35,7 +35,7 @@ func Execute() int {
 
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "thefactory",
+		Use:           "tfy",
 		Short:         "From feedback to merged pull requests, orchestrated through Claude Code",
 		Version:       version,
 		SilenceUsage:  true,

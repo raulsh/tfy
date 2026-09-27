@@ -16,13 +16,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/raulsh/thefactory/internal/claude"
+	"github.com/raulsh/tfy/internal/claude"
 )
 
 func newDevCmd() *cobra.Command {
 	dev := &cobra.Command{
 		Use:    "dev",
-		Short:  "Developer tools for working on thefactory itself",
+		Short:  "Developer tools for working on tfy itself",
 		Hidden: true,
 	}
 	dev.AddCommand(newDevClaudeCmd())
@@ -48,8 +48,8 @@ func newDevClaudeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "claude",
 		Short: "Run one Claude profile by hand and print its event stream",
-		Example: `  thefactory dev claude --profile develop --cwd ./ws --prompt-file task.md --trust repo-a,repo-b
-  thefactory dev claude --profile triage --cwd /tmp --prompt-file msgs.md --schema-file triage.json`,
+		Example: `  tfy dev claude --profile develop --cwd ./ws --prompt-file task.md --trust repo-a,repo-b
+  tfy dev claude --profile triage --cwd /tmp --prompt-file msgs.md --schema-file triage.json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDevClaude(cmd.Context(), o)
@@ -94,7 +94,7 @@ func runDevClaude(ctx context.Context, o devClaudeOpts) error {
 	if err != nil {
 		return err
 	}
-	scratch, err := os.MkdirTemp("", "thefactory-dev-*")
+	scratch, err := os.MkdirTemp("", "tfy-dev-*")
 	if err != nil {
 		return err
 	}
@@ -211,10 +211,10 @@ func gitIdentity() string {
 	}
 	name, email := get("user.name"), get("user.email")
 	if name == "" {
-		name = "thefactory"
+		name = "tfy"
 	}
 	if email == "" {
-		email = "thefactory@localhost"
+		email = "tfy@localhost"
 	}
 	return fmt.Sprintf("[user]\n\tname = %s\n\temail = %s\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n", name, email)
 }

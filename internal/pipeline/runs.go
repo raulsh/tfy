@@ -11,12 +11,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/raulsh/thefactory/internal/claude"
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/events"
-	"github.com/raulsh/thefactory/internal/jobs"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/claude"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/events"
+	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // runRequest describes one Claude run, for a unit or (triage) a project.

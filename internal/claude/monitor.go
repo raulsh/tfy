@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/raulsh/thefactory/internal/guard"
+	"github.com/raulsh/tfy/internal/guard"
 )
 
 // isGuarded reports whether a tool runs shell commands and so must go through

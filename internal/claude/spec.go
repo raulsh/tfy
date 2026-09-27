@@ -19,7 +19,7 @@ const (
 )
 
 // emptyMCPConfig is passed with --strict-mcp-config so no MCP server — the
-// user's claude.ai connectors included — is loaded into a factory run.
+// user's claude.ai connectors included — is loaded into a tfy run.
 const emptyMCPConfig = `{"mcpServers":{}}`
 
 // Spec describes one invocation of `claude -p`.
@@ -35,7 +35,7 @@ type Spec struct {
 
 	PermissionMode string
 	// Tools is the exact built-in tool set. nil keeps the CLI default (which
-	// includes scheduling and remote tools a factory run must not have); an
+	// includes scheduling and remote tools a tfy run must not have); an
 	// empty non-nil slice disables every tool.
 	Tools           []string
 	AllowedTools    []string

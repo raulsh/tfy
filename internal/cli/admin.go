@@ -7,18 +7,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/raulsh/thefactory/internal/config"
-	"github.com/raulsh/thefactory/internal/doctor"
+	"github.com/raulsh/tfy/internal/config"
+	"github.com/raulsh/tfy/internal/doctor"
 )
 
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Create thefactory's data directory and default configuration",
+		Short: "Create tfy's data directory and default configuration",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			paths, err := config.DefaultPaths()
 			if err != nil {
+				return err
+			}
+			if err := migrateLegacyHome(cmd.Context(), paths); err != nil {
 				return err
 			}
 			if err := os.MkdirAll(paths.Root, 0o700); err != nil {
@@ -36,7 +39,7 @@ func newInitCmd() *cobra.Command {
 				return err
 			}
 			fmt.Println("data directory:", paths.Root)
-			fmt.Println("\nnext: `thefactory doctor`, then `thefactory serve --open`")
+			fmt.Println("\nnext: `tfy doctor`, then `tfy serve --open`")
 			return nil
 		},
 	}

@@ -19,8 +19,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // Job statuses.
@@ -219,7 +219,7 @@ func (q *Queue) Sweep(ctx context.Context) error {
 	for _, j := range jobs {
 		k := q.kinds[j.Kind]
 		if k.SideEffects {
-			if err := q.st.Q.FinishJob(ctx, db.FinishJobParams{Status: StatusInterrupted, Error: "thefactory stopped while this job was running", Now: store.NowNull(), ID: j.ID}); err != nil {
+			if err := q.st.Q.FinishJob(ctx, db.FinishJobParams{Status: StatusInterrupted, Error: "tfy stopped while this job was running", Now: store.NowNull(), ID: j.ID}); err != nil {
 				return err
 			}
 			q.log.Warn("job interrupted by restart", "job", j.ID, "kind", j.Kind)

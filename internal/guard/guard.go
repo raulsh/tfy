@@ -1,5 +1,5 @@
 // Package guard decides whether a shell command an agent wants to run may
-// run. It backs `thefactory hook-guard`, the PreToolUse hook on every factory
+// run. It backs `tfy hook-guard`, the PreToolUse hook on every tfy
 // run with shell access.
 //
 // Its job is narrow: publishing belongs to the orchestrator, so agents may not
@@ -139,7 +139,7 @@ func checkCall(call *syntax.CallExpr, depth int) Decision {
 	if !args[0].lit {
 		for _, a := range args[1:] {
 			if a.s == "push" {
-				return deny("indirect command with a push argument is not allowed: pushing is done by thefactory")
+				return deny("indirect command with a push argument is not allowed: pushing is done by tfy")
 			}
 		}
 	}
@@ -158,7 +158,7 @@ func checkCall(call *syntax.CallExpr, depth int) Decision {
 		}
 		return checkScript(strings.Join(parts, " "), depth+1)
 	case "gh", "hub":
-		return deny("the %s CLI is not available to agents: thefactory opens and updates pull requests itself", name)
+		return deny("the %s CLI is not available to agents: tfy opens and updates pull requests itself", name)
 	case "git":
 		return checkGit(args[1:])
 	}
@@ -250,7 +250,7 @@ func checkGit(args []word) Decision {
 				v = args[i+1].s
 			}
 			if key, _, _ := strings.Cut(v, "="); protectedConfig.MatchString(key) {
-				return deny("git -c %s is not allowed: remotes and credentials are managed by thefactory", key)
+				return deny("git -c %s is not allowed: remotes and credentials are managed by tfy", key)
 			}
 		}
 		if gitGlobalWithArg[name] && !hasValue {
@@ -264,7 +264,7 @@ func checkGit(args []word) Decision {
 	sub, rest := args[i].s, args[i+1:]
 	switch sub {
 	case "push", "send-pack", "http-push", "send-email", "request-pull":
-		return deny("git %s is not allowed: commit locally and stop — thefactory pushes and opens the pull request", sub)
+		return deny("git %s is not allowed: commit locally and stop — tfy pushes and opens the pull request", sub)
 	case "remote":
 		for _, r := range rest {
 			switch r.s {
@@ -281,7 +281,7 @@ func checkGit(args []word) Decision {
 				return deny("git config %s is not allowed", r.s)
 			}
 			if key, _, _ := strings.Cut(r.s, "="); !strings.HasPrefix(key, "-") && protectedConfig.MatchString(key) {
-				return deny("git config %s is not allowed: remotes and credentials are managed by thefactory", key)
+				return deny("git config %s is not allowed: remotes and credentials are managed by tfy", key)
 			}
 		}
 	}

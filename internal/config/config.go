@@ -1,4 +1,4 @@
-// Package config holds thefactory's configuration and on-disk layout.
+// Package config holds tfy's configuration and on-disk layout.
 package config
 
 import (
@@ -19,7 +19,7 @@ type Stage struct {
 	Timeout time.Duration `yaml:"timeout"`
 }
 
-// Config is ~/.thefactory/config.yaml.
+// Config is ~/.tfy/config.yaml.
 type Config struct {
 	Port              int              `yaml:"port"`
 	MaxConcurrentRuns int              `yaml:"max_concurrent_runs"`
@@ -27,7 +27,7 @@ type Config struct {
 	PRPollInterval    time.Duration    `yaml:"pr_poll_interval"`
 	SlackPollInterval time.Duration    `yaml:"slack_poll_interval"`
 
-	// Executables, overridable for tests (THEFACTORY_CLAUDE_BIN, …).
+	// Executables, overridable for tests (TFY_CLAUDE_BIN, …).
 	ClaudeBin string `yaml:"claude_bin"`
 	GHBin     string `yaml:"gh_bin"`
 	GitBin    string `yaml:"git_bin"`
@@ -115,10 +115,10 @@ func Load(p Paths) (Config, error) {
 		val *string
 		def string
 	}{
-		{"THEFACTORY_CLAUDE_BIN", &cfg.ClaudeBin, def.ClaudeBin},
-		{"THEFACTORY_GH_BIN", &cfg.GHBin, def.GHBin},
-		{"THEFACTORY_GIT_BIN", &cfg.GitBin, def.GitBin},
-		{"THEFACTORY_SLK_BIN", &cfg.SlkBin, def.SlkBin},
+		{"TFY_CLAUDE_BIN", &cfg.ClaudeBin, def.ClaudeBin},
+		{"TFY_GH_BIN", &cfg.GHBin, def.GHBin},
+		{"TFY_GIT_BIN", &cfg.GitBin, def.GitBin},
+		{"TFY_SLK_BIN", &cfg.SlkBin, def.SlkBin},
 	}
 	for _, b := range bins {
 		if e := os.Getenv(b.env); e != "" {
@@ -147,9 +147,9 @@ type Paths struct {
 	Root string
 }
 
-// DefaultPaths uses $THEFACTORY_HOME or ~/.thefactory.
+// DefaultPaths uses $TFY_HOME or ~/.tfy.
 func DefaultPaths() (Paths, error) {
-	if root := os.Getenv("THEFACTORY_HOME"); root != "" {
+	if root := os.Getenv("TFY_HOME"); root != "" {
 		abs, err := filepath.Abs(root)
 		return Paths{Root: abs}, err
 	}
@@ -157,14 +157,41 @@ func DefaultPaths() (Paths, error) {
 	if err != nil {
 		return Paths{}, err
 	}
-	return Paths{Root: filepath.Join(home, ".thefactory")}, nil
+	return Paths{Root: filepath.Join(home, ".tfy")}, nil
 }
 
+// legacyDirName is the data directory of tfy's first name, thefactory.
+const legacyDirName = ".thefactory"
+
+// LegacyRoot returns the data directory left by thefactory when it should be
+// moved to paths: the default location is used (no TFY_HOME), the new one
+// does not exist yet, and the old one does.
+func LegacyRoot(p Paths) (string, bool) {
+	if os.Getenv("TFY_HOME") != "" {
+		return "", false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || p.Root != filepath.Join(home, ".tfy") {
+		return "", false
+	}
+	if _, err := os.Stat(p.Root); !errors.Is(err, os.ErrNotExist) {
+		return "", false
+	}
+	old := filepath.Join(home, legacyDirName)
+	if fi, err := os.Stat(old); err != nil || !fi.IsDir() {
+		return "", false
+	}
+	return old, true
+}
+
+// LegacyDB is the database file name under the old data directory.
+const LegacyDB = "factory.db"
+
 func (p Paths) Config() string    { return filepath.Join(p.Root, "config.yaml") }
-func (p Paths) DB() string        { return filepath.Join(p.Root, "factory.db") }
+func (p Paths) DB() string        { return filepath.Join(p.Root, "tfy.db") }
 func (p Paths) Token() string     { return filepath.Join(p.Root, "token") }
 func (p Paths) Lock() string      { return filepath.Join(p.Root, "serve.lock") }
-func (p Paths) GuardBin() string  { return filepath.Join(p.Root, "bin", "thefactory") }
+func (p Paths) GuardBin() string  { return filepath.Join(p.Root, "bin", "tfy") }
 func (p Paths) GitConfig() string { return filepath.Join(p.Root, "agent", "gitconfig") }
 func (p Paths) GHConfig() string  { return filepath.Join(p.Root, "agent", "gh") }
 func (p Paths) Repos() string     { return filepath.Join(p.Root, "repos") }

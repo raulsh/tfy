@@ -1,4 +1,4 @@
-// Package doctor checks that thefactory's dependencies are installed and
+// Package doctor checks that tfy's dependencies are installed and
 // signed in.
 package doctor
 
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/raulsh/thefactory/internal/config"
+	"github.com/raulsh/tfy/internal/config"
 )
 
 // Check statuses.
@@ -169,7 +169,7 @@ func portCheck(port int) Check {
 	c := Check{Name: "port"}
 	l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		c.Status, c.Detail, c.Fix = Warn, fmt.Sprintf("127.0.0.1:%d is in use (is thefactory already running?)", port), "pick another port with --port"
+		c.Status, c.Detail, c.Fix = Warn, fmt.Sprintf("127.0.0.1:%d is in use (is tfy already running?)", port), "pick another port with --port"
 		return c
 	}
 	l.Close()

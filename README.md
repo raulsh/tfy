@@ -1,6 +1,6 @@
-# thefactory
+# tfy (thefactory)
 
-thefactory takes a **unit** of work (a feature, bug fix, improvement or chore) from an idea to a merged pull request. Every step is carried out by [Claude Code](https://claude.com/claude-code), running headless on your machine.
+tfy, short for thefactory, takes a **unit** of work (a feature, bug fix, improvement or chore) from an idea to a merged pull request. Every step is carried out by [Claude Code](https://claude.com/claude-code), running headless on your machine.
 
 ```
  feedback ─▶ definition ─▶ planning ─▶ executing ─────────────────▶ release
@@ -11,18 +11,18 @@ thefactory takes a **unit** of work (a feature, bug fix, improvement or chore) f
 
 - **Definition.** Claude writes the requirement: what is needed, and why. You edit it, or ask for a revision, then mark it ready.
 - **Planning.** Claude reads the linked repositories and writes a spec with numbered acceptance criteria. You approve it.
-- **Executing.** Claude implements the spec in isolated checkouts and commits locally. thefactory pushes the branches and opens the pull requests, across as many repositories as the spec touches.
+- **Executing.** Claude implements the spec in isolated checkouts and commits locally. tfy pushes the branches and opens the pull requests, across as many repositories as the spec touches.
 - **Review.** A reviewer run checks each acceptance criterion against the diff. If any criterion is unmet or a finding blocks, the work goes back to development automatically, for a limited number of rounds.
-- **Merge.** You merge from the UI. thefactory first checks that no pull request changed since the review and none conflicts. You can also merge on GitHub; thefactory notices.
-- **Release.** Claude writes release notes for users, and thefactory follows CI on each merge commit. If CI fails, it offers a follow-up bugfix unit.
-- **Feedback.** Units can also start from Slack. thefactory polls your channels through `slk` and triages every new message:
+- **Merge.** You merge from the UI. tfy first checks that no pull request changed since the review and none conflicts. You can also merge on GitHub; tfy notices.
+- **Release.** Claude writes release notes for users, and tfy follows CI on each merge commit. If CI fails, it offers a follow-up bugfix unit.
+- **Feedback.** Units can also start from Slack. tfy polls your channels through `slk` and triages every new message:
   - actionable ones become **proposals** for you to accept;
   - messages about tracked work are attached to it;
   - the rest is set aside as noise.
 
   You can also pick messages in the Inbox and turn them into a unit yourself.
 
-It runs locally. `thefactory serve` is the backend and serves the UI on `127.0.0.1`.
+It runs locally. `tfy serve` is the backend and serves the UI on `127.0.0.1`.
 
 ## Requirements
 
@@ -36,9 +36,9 @@ It runs locally. `thefactory serve` is the backend and serves the UI on `127.0.0
 
 ```sh
 make install            # builds the UI and the binary into ~/.local/bin
-thefactory init         # creates ~/.thefactory
-thefactory doctor       # checks claude, gh, git, slk
-thefactory serve --open # prints a link with a token, and opens it
+tfy init         # creates ~/.tfy
+tfy doctor       # checks claude, gh, git, slk
+tfy serve --open # prints a link with a token, and opens it
 ```
 
 1. Create a project, link its GitHub repositories, and optionally its Slack channels (Projects → Slack).
@@ -54,9 +54,9 @@ To try the whole pipeline without spending tokens or touching GitHub, run `make 
 
 Each Claude run gets only what its stage needs, and several layers stop it from publishing on its own:
 
-- **Isolated checkouts.** Every unit works in its own `git clone --local` checkouts, **with no remote**. Only thefactory pushes and opens pull requests, using your credentials.
+- **Isolated checkouts.** Every unit works in its own `git clone --local` checkouts, **with no remote**. Only tfy pushes and opens pull requests, using your credentials.
 - **No publishing credentials.** Runs start from a scrubbed environment: no `GH_TOKEN`, no SSH agent, an empty `gh` configuration, and a gitconfig with no credential helper.
-- **A guard hook.** Every shell command passes through `thefactory hook-guard`, which parses it and blocks pushes, remote and credential changes, and `gh`. It catches `git -C`, `sh -c`, `eval`, wrappers, and command substitutions. If the guard fails to run, the run is aborted, because the CLI itself would fail open.
+- **A guard hook.** Every shell command passes through `tfy hook-guard`, which parses it and blocks pushes, remote and credential changes, and `gh`. It catches `git -C`, `sh -c`, `eval`, wrappers, and command substitutions. If the guard fails to run, the run is aborted, because the CLI itself would fail open.
 - **Isolated settings.** Runs use `--setting-sources ""`, strict MCP with no servers, an explicit tool list, and a permission mode per stage:
 
   | Stage | Mode | Access |
@@ -80,7 +80,7 @@ make demo   # full pipeline on fakes
 
 | Path | What it holds |
 |---|---|
-| `cmd/thefactory` | Entry point. |
+| `cmd/tfy` | Entry point. |
 | `internal/claude` | Runs `claude -p`: args, isolated env, stream parser, and a safety monitor that aborts on guard failures, the wrong permission mode, or pushes. |
 | `internal/guard` | The PreToolUse guard: a shell parser plus rules. |
 | `internal/pipeline` | Every stage (triage, define, plan, develop, publish, review, merge, release), managed clones and checkouts, the pollers, and restart recovery. |
@@ -90,9 +90,9 @@ make demo   # full pipeline on fakes
 | `internal/api` | Fiber v3 JSON API, SSE streams, and the embedded UI. |
 | `ui` | React 19, antd 5, TanStack Query. The design follows groundcover. |
 
-Data lives in `~/.thefactory`, or `$THEFACTORY_HOME`:
+Data lives in `~/.tfy`, or `$TFY_HOME`:
 
-- `factory.db`, the database
+- `tfy.db`, the database
 - `repos/`, fetch-only bare clones
 - `workspaces/<unit>/`, the unit's documents and checkouts
 - `config.yaml`, models, budgets and timeouts per stage

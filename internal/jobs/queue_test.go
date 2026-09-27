@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 func newQueue(t *testing.T, workers int) (*Queue, *store.Store) {

@@ -8,8 +8,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/sse"
 
-	"github.com/raulsh/thefactory/internal/events"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/events"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // terminalRun reports whether a run status is final.

@@ -1,4 +1,4 @@
-// Package api is thefactory's HTTP interface: a JSON API under /api/v1,
+// Package api is tfy's HTTP interface: a JSON API under /api/v1,
 // server-sent event streams, and the embedded UI.
 package api
 
@@ -17,16 +17,16 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 
-	"github.com/raulsh/thefactory/internal/config"
-	"github.com/raulsh/thefactory/internal/doctor"
-	"github.com/raulsh/thefactory/internal/events"
-	"github.com/raulsh/thefactory/internal/jobs"
-	"github.com/raulsh/thefactory/internal/pipeline"
-	"github.com/raulsh/thefactory/internal/store"
+	"github.com/raulsh/tfy/internal/config"
+	"github.com/raulsh/tfy/internal/doctor"
+	"github.com/raulsh/tfy/internal/events"
+	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/pipeline"
+	"github.com/raulsh/tfy/internal/store"
 )
 
 // TokenCookie carries the per-install token for the browser.
-const TokenCookie = "thefactory_token"
+const TokenCookie = "tfy_token"
 
 // Options configure the server.
 type Options struct {
@@ -63,7 +63,7 @@ func New(o Options) *fiber.App {
 	s.allowedOrigins = append(s.allowedOrigins, o.DevOrigins...)
 
 	app := fiber.New(fiber.Config{
-		AppName:      "thefactory",
+		AppName:      "tfy",
 		ErrorHandler: s.errorHandler,
 		BodyLimit:    8 << 20,
 		ReadTimeout:  30 * time.Second,
@@ -116,7 +116,7 @@ func (s *Server) requireToken(c fiber.Ctx) error {
 	if s.tokenOK(c) {
 		return c.Next()
 	}
-	return fiber.NewError(fiber.StatusUnauthorized, "open thefactory with the link `thefactory serve` printed")
+	return fiber.NewError(fiber.StatusUnauthorized, "open tfy with the link `tfy serve` printed")
 }
 
 // createSession trades the token from the printed link for a cookie.
@@ -229,8 +229,8 @@ func (s *Server) ui() fiber.Handler {
 }
 
 const notBuiltPage = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>thefactory</title></head>
+<html lang="en"><head><meta charset="utf-8"><title>tfy</title></head>
 <body style="font-family: system-ui, sans-serif; padding: 2rem; color: #101828">
-<h1>thefactory</h1>
+<h1>tfy</h1>
 <p>The UI is not built into this binary. Run <code>make build</code>, or <code>make dev</code> for the Vite dev server.</p>
 </body></html>`

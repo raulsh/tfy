@@ -119,7 +119,7 @@ func (r *Runner) Run(ctx context.Context, spec *Spec, cb Callbacks) *Outcome {
 	cmd.Stderr = stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:   true,
-		Pdeathsig: syscall.SIGTERM, // if thefactory dies, so does the run
+		Pdeathsig: syscall.SIGTERM, // if tfy dies, so does the run
 	}
 
 	started := make(chan error, 1)

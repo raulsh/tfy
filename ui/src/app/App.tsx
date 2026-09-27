@@ -74,11 +74,11 @@ export function App() {
 			<Centered>
 				<EmptyState
 					icon={<KeyRound size={28} />}
-					title={session === "rejected" ? "That link's token is not valid" : "Open thefactory from its link"}
+					title={session === "rejected" ? "That link's token is not valid" : "Open tfy from its link"}
 				>
 					<p style={{ marginTop: 0 }}>
-						For safety, the UI opens through the link <code>thefactory serve</code> prints in your terminal. It holds a
-						token for this machine; after the first visit a cookie remembers it.
+						For safety, the UI opens through the link <code>tfy serve</code> prints in your terminal. It holds a token
+						for this machine; after the first visit a cookie remembers it.
 						{session === "rejected" && " Copy the link again, or paste it here."}
 					</p>
 					<PasteLink onSignedIn={() => setSession("ok")} />
@@ -88,8 +88,8 @@ export function App() {
 	if (session === "offline")
 		return (
 			<Centered>
-				<EmptyState icon={<PlugZap size={28} />} title="thefactory is not reachable">
-					Start it with <code>thefactory serve</code>, then reload this page.
+				<EmptyState icon={<PlugZap size={28} />} title="tfy is not reachable">
+					Start it with <code>tfy serve</code>, then reload this page.
 				</EmptyState>
 			</Centered>
 		);
@@ -194,8 +194,7 @@ function PasteLink({ onSignedIn }: { onSignedIn: () => void }) {
 		const result = await signIn(token);
 		setBusy(false);
 		if (result === "ok") onSignedIn();
-		else
-			setError(result === "rejected" ? "That token is not valid for this installation" : "thefactory is not reachable");
+		else setError(result === "rejected" ? "That token is not valid for this installation" : "tfy is not reachable");
 	};
 	return (
 		<div style={{ maxWidth: 460, margin: "12px auto 0" }}>

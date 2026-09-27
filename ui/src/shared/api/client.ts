@@ -1,4 +1,4 @@
-// A small fetch wrapper for thefactory's API: same-origin cookie auth and the
+// A small fetch wrapper for tfy's API: same-origin cookie auth and the
 // {data} / {error} envelopes.
 
 export class ApiError extends Error {

@@ -22,18 +22,18 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/raulsh/thefactory/internal/api"
-	"github.com/raulsh/thefactory/internal/claude"
-	"github.com/raulsh/thefactory/internal/config"
-	"github.com/raulsh/thefactory/internal/doctor"
-	"github.com/raulsh/thefactory/internal/events"
-	"github.com/raulsh/thefactory/internal/gh"
-	"github.com/raulsh/thefactory/internal/git"
-	"github.com/raulsh/thefactory/internal/jobs"
-	"github.com/raulsh/thefactory/internal/pipeline"
-	"github.com/raulsh/thefactory/internal/slack"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/web"
+	"github.com/raulsh/tfy/internal/api"
+	"github.com/raulsh/tfy/internal/claude"
+	"github.com/raulsh/tfy/internal/config"
+	"github.com/raulsh/tfy/internal/doctor"
+	"github.com/raulsh/tfy/internal/events"
+	"github.com/raulsh/tfy/internal/gh"
+	"github.com/raulsh/tfy/internal/git"
+	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/pipeline"
+	"github.com/raulsh/tfy/internal/slack"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/web"
 )
 
 type serveOpts struct {
@@ -47,7 +47,7 @@ func newServeCmd() *cobra.Command {
 	var o serveOpts
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Run thefactory and serve its UI on 127.0.0.1",
+		Short: "Run tfy and serve its UI on 127.0.0.1",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServe(cmd.Context(), o)
@@ -78,6 +78,9 @@ func runServe(ctx context.Context, o serveOpts) error {
 	if o.port != 0 {
 		cfg.Port = o.port
 	}
+	if err := migrateLegacyHome(ctx, paths); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(paths.Root, 0o700); err != nil {
 		return err
 	}
@@ -104,7 +107,7 @@ func runServe(ctx context.Context, o serveOpts) error {
 		}
 	}
 	if !doctor.Healthy(checks) {
-		return errors.New("fix the failed checks above (see `thefactory doctor`)")
+		return errors.New("fix the failed checks above (see `tfy doctor`)")
 	}
 
 	st, err := store.Open(ctx, paths.DB())
@@ -165,7 +168,7 @@ func runServe(ctx context.Context, o serveOpts) error {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
 	link := fmt.Sprintf("http://127.0.0.1:%d/?token=%s", cfg.Port, token)
-	fmt.Fprintf(os.Stderr, "\n  thefactory is running\n\n  open  %s\n  data  %s\n\n", link, paths.Root)
+	fmt.Fprintf(os.Stderr, "\n  tfy is running\n\n  open  %s\n  data  %s\n\n", link, paths.Root)
 	if o.open {
 		go openBrowser(link)
 	}
@@ -195,7 +198,45 @@ func runServe(ctx context.Context, o serveOpts) error {
 	return nil
 }
 
-// lockInstance makes sure only one thefactory serves a data directory.
+// migrateLegacyHome moves the data directory thefactory used (~/.thefactory)
+// to ~/.tfy, once, and rewrites the absolute paths stored in the database.
+func migrateLegacyHome(ctx context.Context, paths config.Paths) error {
+	old, ok := config.LegacyRoot(paths)
+	if !ok {
+		return nil
+	}
+	// A running thefactory holds its lock; moving the directory under it
+	// would lose its writes.
+	unlock, err := lockInstance(filepath.Join(old, "serve.lock"))
+	if err != nil {
+		return fmt.Errorf("%s is in use by a running thefactory: stop it, then start tfy again", old)
+	}
+	unlock()
+	if err := os.Rename(old, paths.Root); err != nil {
+		return fmt.Errorf("move %s to %s: %w", old, paths.Root, err)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		from := filepath.Join(paths.Root, config.LegacyDB+suffix)
+		if _, err := os.Stat(from); err == nil {
+			if err := os.Rename(from, paths.DB()+suffix); err != nil {
+				return err
+			}
+		}
+	}
+	_ = os.Remove(filepath.Join(paths.Root, "bin", "thefactory"))
+	st, err := store.Open(ctx, paths.DB())
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := st.RewritePathPrefix(ctx, old, paths.Root); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "moved %s to %s\n", old, paths.Root)
+	return nil
+}
+
+// lockInstance makes sure only one tfy serves a data directory.
 func lockInstance(path string) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -203,7 +244,7 @@ func lockInstance(path string) (func(), error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("thefactory is already running for %s", filepath.Dir(path))
+		return nil, fmt.Errorf("tfy is already running for %s", filepath.Dir(path))
 	}
 	_ = f.Truncate(0)
 	_, _ = f.WriteString(strconv.Itoa(os.Getpid()))
@@ -246,7 +287,7 @@ func installGuard(dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".thefactory-*")
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".tfy-*")
 	if err != nil {
 		return err
 	}

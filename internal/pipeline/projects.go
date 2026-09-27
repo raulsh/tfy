@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/raulsh/thefactory/internal/domain"
-	"github.com/raulsh/thefactory/internal/store"
-	"github.com/raulsh/thefactory/internal/store/db"
+	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/store"
+	"github.com/raulsh/tfy/internal/store/db"
 )
 
 // ProjectInput creates or updates a project.
@@ -146,10 +146,10 @@ func (p *Pipeline) UnlinkRepo(ctx context.Context, projectID, repoID string) err
 // only the commit identity, and an empty gh configuration directory.
 func (p *Pipeline) PrepareAgentEnv(name, email string) error {
 	if name == "" {
-		name = "thefactory"
+		name = "tfy"
 	}
 	if email == "" {
-		email = "thefactory@localhost"
+		email = "tfy@localhost"
 	}
 	if err := os.MkdirAll(p.Paths.GHConfig(), 0o700); err != nil {
 		return err
