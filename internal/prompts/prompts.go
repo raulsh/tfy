@@ -79,13 +79,6 @@ type Repo struct {
 	Branch        string
 }
 
-// Instructions is one repository's CLAUDE.md or AGENTS.md.
-type Instructions struct {
-	Repo    string
-	File    string
-	Content string
-}
-
 // Feedback is a user message behind a unit.
 type Feedback struct {
 	Author  string
@@ -103,8 +96,7 @@ type Criterion struct {
 // System is the stable part of a unit's prompt, passed with
 // --append-system-prompt. It must not change between runs of one session.
 type System struct {
-	Repos        []Repo
-	Instructions []Instructions
+	Repos []Repo
 }
 
 // Define is the data for define.tmpl.
@@ -198,4 +190,40 @@ type Release struct {
 	Reporters []string
 	PRs       []string
 	Commits   string
+}
+
+// LearnReview is one review round of a finished unit.
+type LearnReview struct {
+	Round    int
+	Decision string
+	Unmet    []string // criteria not met, with the reviewer's evidence
+	Findings []string
+}
+
+// LearnNote is something a person said about a unit's work.
+type LearnNote struct {
+	Author string
+	Where  string
+	Text   string
+}
+
+// Learn is the data for learn.tmpl.
+type Learn struct {
+	Label   string
+	Title   string
+	Kind    string
+	Summary string
+	Repos   []Repo
+	// PRs describe each pull request: number, final state, CI.
+	PRs          []string
+	ReviewRounds int
+	Reviews      []LearnReview
+	// Feedback is what people told tfy: requirement and spec revisions,
+	// and changes they asked for in review.
+	Feedback   []LearnNote
+	EditedDocs []string
+	// Comments are what people wrote on the pull requests.
+	Comments  []LearnNote
+	Denials   []string
+	FollowUps []string
 }

@@ -28,6 +28,7 @@ func (s *Server) routes(r fiber.Router) {
 	r.Delete("/projects/:id", s.deleteProject)
 	r.Post("/projects/:id/repos", s.linkRepo)
 	r.Delete("/projects/:id/repos/:repoID", s.unlinkRepo)
+	r.Get("/projects/:id/conventions", s.projectConventions)
 
 	r.Get("/pickers/github-owners", s.githubOwners)
 	r.Get("/pickers/github-repos", s.githubRepos)
@@ -74,7 +75,7 @@ func (s *Server) configView(c fiber.Ctx) error {
 		Timeout string  `json:"timeout"`
 	}
 	stages := map[string]stageView{}
-	for _, kind := range []string{"triage", "define", "plan", "develop", "review", "release"} {
+	for _, kind := range []string{"triage", "define", "plan", "develop", "review", "release", "learn"} {
 		st := s.Config.Stage(kind)
 		stages[kind] = stageView{st.Model, st.Effort, st.Budget, st.Timeout.String()}
 	}
@@ -206,6 +207,17 @@ func (s *Server) updateProject(c fiber.Ctx) error {
 		return err
 	}
 	return ok(c, v)
+}
+
+// projectConventions shows what Claude Code follows in each of the
+// project's repositories, from their default branches; ?refresh=1 fetches
+// first.
+func (s *Server) projectConventions(c fiber.Ctx) error {
+	out, err := s.Pipeline.Conventions(c.Context(), c.Params("id"), c.Query("refresh") == "1")
+	if err != nil {
+		return err
+	}
+	return ok(c, out)
 }
 
 func (s *Server) deleteProject(c fiber.Ctx) error {

@@ -64,6 +64,17 @@ var Profiles = map[string]Profile{
 		ForbidPush:     true,
 		MaxDenials:     40,
 	},
+	// learn looks back at a finished unit and may propose changes to the
+	// repositories' conventions. Like review, it only reads.
+	"learn": {
+		Name:           "learn",
+		Tools:          []string{"Bash", "Read"},
+		AllowedTools:   []string{"Read"},
+		PermissionMode: ModeDontAsk,
+		Guarded:        true,
+		ForbidPush:     true,
+		MaxDenials:     40,
+	},
 	"release": {
 		Name:           "release",
 		Tools:          []string{},

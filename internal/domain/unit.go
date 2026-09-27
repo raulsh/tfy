@@ -177,6 +177,9 @@ const (
 	OriginSlackAuto   Origin = "slack_auto"
 	OriginSlackManual Origin = "slack_manual"
 	OriginFollowUp    Origin = "follow_up"
+	// OriginRetrospective units change the repositories' Claude Code
+	// conventions, as proposed by the retrospective of an earlier unit.
+	OriginRetrospective Origin = "retrospective"
 )
 
 // Label is how a unit is referred to by people: U-42.
@@ -204,7 +207,12 @@ func Slug(title string, max int) string {
 	return s
 }
 
-// BranchName is the branch a unit's changes live on in every repo.
-func BranchName(seq int64, title string) string {
-	return fmt.Sprintf("tfy/u%d-%s", seq, Slug(title, 40))
+// BranchName is the branch a unit's changes live on in every repo: the
+// project's template with {seq}, {slug} (from the title) and {kind} filled
+// in. An invalid template falls back to DefaultBranchTemplate.
+func BranchName(template string, seq int64, kind, title string) string {
+	if !ValidBranchTemplate(template) {
+		template = DefaultBranchTemplate
+	}
+	return strings.NewReplacer("{seq}", fmt.Sprint(seq), "{slug}", Slug(title, 40), "{kind}", Slug(kind, 20)).Replace(template)
 }

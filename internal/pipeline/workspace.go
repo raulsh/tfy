@@ -23,6 +23,8 @@ const (
 	DocSpec         = "spec"
 	DocReview       = "review"
 	DocReleaseNotes = "release_notes"
+	// DocRetrospective is what a finished unit's retrospective found.
+	DocRetrospective = "retrospective"
 )
 
 var docFiles = map[string]string{
@@ -31,7 +33,7 @@ var docFiles = map[string]string{
 }
 
 // DocKinds lists the document kinds a unit can have.
-var DocKinds = []string{DocRequirement, DocSpec, DocReview, DocReleaseNotes}
+var DocKinds = []string{DocRequirement, DocSpec, DocReview, DocReleaseNotes, DocRetrospective}
 
 func (p *Pipeline) repoLock(fullName string) *sync.Mutex {
 	m, _ := p.repoLocks.LoadOrStore(fullName, &sync.Mutex{})
@@ -143,32 +145,9 @@ func promptRepos(urs []db.ListUnitReposRow, branch string) []prompts.Repo {
 	return out
 }
 
-// maxInstructions bounds how much of a repo's CLAUDE.md/AGENTS.md goes into
-// the system prompt.
-const maxInstructions = 16 << 10
-
-// repoInstructions reads the top-level agent instruction files of each
-// checkout. With --setting-sources "" the CLI does not load them itself.
-func repoInstructions(urs []db.ListUnitReposRow) []prompts.Instructions {
-	var out []prompts.Instructions
-	for _, ur := range urs {
-		for _, name := range []string{"CLAUDE.md", ".claude/CLAUDE.md", "AGENTS.md"} {
-			b, err := os.ReadFile(filepath.Join(ur.CheckoutPath, name))
-			if err != nil || len(strings.TrimSpace(string(b))) == 0 {
-				continue
-			}
-			if len(b) > maxInstructions {
-				b = append(b[:maxInstructions], []byte("\n[truncated]")...)
-			}
-			out = append(out, prompts.Instructions{Repo: ur.FullName, File: name, Content: string(b)})
-		}
-	}
-	return out
-}
-
 // systemPrompt renders the stable part of a unit's prompt.
 func systemPrompt(urs []db.ListUnitReposRow) (string, error) {
-	text, _, err := prompts.Render("system", prompts.System{Repos: promptRepos(urs, ""), Instructions: repoInstructions(urs)})
+	text, _, err := prompts.Render("system", prompts.System{Repos: promptRepos(urs, "")})
 	return text, err
 }
 

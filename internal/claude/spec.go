@@ -45,6 +45,11 @@ type Spec struct {
 	AppendSystemPrompt string
 	SettingsPath       string
 	AddDirs            []string
+	// SettingSources are the setting sources the CLI loads besides the
+	// --settings file: none by default. "project" makes the working
+	// directory a Claude Code project: its CLAUDE.md, .claude/rules and
+	// .claude/settings.json, and nested checkouts' CLAUDE.md and rules.
+	SettingSources []string
 
 	// Exactly one of SessionID (a new session with a known id), ResumeSession
 	// (continue an earlier session), or NoSessionPersistence may be set.
@@ -59,6 +64,10 @@ type Spec struct {
 	// RequireGuard makes the runner abort when a PreToolUse hook fails to run
 	// cleanly: a missing or crashing guard fails open in the CLI.
 	RequireGuard bool
+	// GuardMarker, when set, is what the guard prints on stdout. PreToolUse
+	// hooks without it are the repository's own, and only the guard is held
+	// to RequireGuard. Empty treats every PreToolUse hook as the guard.
+	GuardMarker string
 	// ForbidPush makes the runner abort when the CLI reports a git push.
 	ForbidPush bool
 	// MaxDenials aborts a run that keeps hitting the permission system; zero
@@ -101,7 +110,7 @@ func (s *Spec) Args() []string {
 		"--output-format", "stream-json",
 		"--verbose", // stream-json emits nothing but the result without it
 		"--include-hook-events",
-		"--setting-sources", "",
+		"--setting-sources", strings.Join(s.SettingSources, ","),
 		"--strict-mcp-config",
 		"--mcp-config", emptyMCPConfig,
 		"--disable-slash-commands",

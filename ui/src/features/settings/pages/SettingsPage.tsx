@@ -132,7 +132,7 @@ export default function SettingsPage() {
 									size="small"
 									rowKey="kind"
 									pagination={false}
-									dataSource={["triage", "define", "plan", "develop", "review", "release"].map((k) => ({
+									dataSource={["triage", "define", "plan", "develop", "review", "release", "learn"].map((k) => ({
 										kind: k,
 										...config.data.stages[k],
 									}))}

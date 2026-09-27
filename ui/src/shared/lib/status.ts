@@ -129,6 +129,7 @@ export const originLabel: Record<string, string> = {
 	slack_auto: "Slack (triaged)",
 	slack_manual: "Slack (manual)",
 	follow_up: "Follow-up",
+	retrospective: "Retrospective",
 };
 
 export function checksTone(s: string): Tone {

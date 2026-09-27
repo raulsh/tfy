@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/shared/api/client";
-import type { GitHubRepo, Project, ProjectSettings, Repo } from "@/shared/api/types";
+import type { GitHubRepo, Project, ProjectSettings, Repo, RepoConventions } from "@/shared/api/types";
 
 export function useProjects() {
 	return useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
@@ -18,6 +18,8 @@ export interface ProjectInput {
 	name: string;
 	description: string;
 	product_context: string;
+	// Left out, the project's conventions stay as they are.
+	conventions?: string;
 	settings?: ProjectSettings;
 }
 
@@ -79,4 +81,20 @@ export function useGitHubRepos(owner: string | undefined) {
 		enabled: !!owner,
 		staleTime: 5 * 60_000,
 	});
+}
+
+// The conventions of every repository of a project, read from their default
+// branches. Refreshing fetches the repositories first.
+export function useConventions(projectId: string) {
+	const qc = useQueryClient();
+	const q = useQuery({
+		queryKey: ["conventions", projectId],
+		queryFn: () => api.get<RepoConventions[]>(`/projects/${projectId}/conventions`),
+		staleTime: 60_000,
+	});
+	const refresh = useMutation({
+		mutationFn: () => api.get<RepoConventions[]>(`/projects/${projectId}/conventions?refresh=1`),
+		onSuccess: (data) => qc.setQueryData(["conventions", projectId], data),
+	});
+	return { ...q, refresh };
 }

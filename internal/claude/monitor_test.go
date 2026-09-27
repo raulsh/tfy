@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -76,5 +77,58 @@ func TestPushReportCheckedAgainstCommands(t *testing.T) {
 	m.observe(toolUse("t4", "git -C app push https://github.com/x/y main"))
 	if why := m.observe(pushed); why == "" {
 		t.Fatal("a real push must abort")
+	}
+}
+
+// With repository hooks next to the guard, only the guard's own responses
+// (marked on stdout) count, and a repository hook's failure is not the
+// run's.
+func TestGuardMarkerSeparatesRepositoryHooks(t *testing.T) {
+	hook := func(stdout string, exit int) Event {
+		raw, _ := json.Marshal(map[string]any{"type": "system", "subtype": "hook_response", "hook_name": "PreToolUse:Bash",
+			"hook_event": "PreToolUse", "exit_code": exit, "outcome": "success", "stdout": stdout})
+		return ParseLine(1, raw)
+	}
+	toolUse := func(id string) Event {
+		raw, _ := json.Marshal(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant",
+			"content": []any{map[string]any{"type": "tool_use", "id": id, "name": "Bash", "input": map[string]string{"command": "make test"}}}}})
+		return ParseLine(2, raw)
+	}
+	result := func(id string) Event {
+		raw, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user",
+			"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": "ok"}}}})
+		return ParseLine(3, raw)
+	}
+	spec := Spec{RequireGuard: true, GuardMarker: GuardMarker}
+
+	m := newMonitor(&spec)
+	m.observe(toolUse("t1"))
+	if why := m.observe(hook("lint warnings\n", 1)); why != "" {
+		t.Fatalf("a repository hook's non-blocking error must not abort: %s", why)
+	}
+	m.observe(hook(GuardMarker+"\n", 0))
+	if why := m.observe(result("t1")); why != "" {
+		t.Fatalf("the guard answered: %s", why)
+	}
+
+	// The repository hook answered, the guard did not.
+	m.observe(toolUse("t2"))
+	m.observe(hook("", 0))
+	if why := m.observe(result("t2")); !strings.Contains(why, "without the guard") {
+		t.Fatalf("a repository hook cannot stand in for the guard, got %q", why)
+	}
+
+	m = newMonitor(&spec)
+	if why := m.observe(hook(GuardMarker+"\n", 1)); !strings.Contains(why, "exit 1") {
+		t.Fatalf("a guard that fails must abort the run, got %q", why)
+	}
+}
+
+func TestProjectSettingSources(t *testing.T) {
+	spec := &Spec{Prompt: "x", Cwd: "/w", SettingSources: []string{"project"}}
+	Profiles["develop"].Apply(spec)
+	args := spec.Args()
+	if i := slices.Index(args, "--setting-sources"); i < 0 || args[i+1] != "project" {
+		t.Errorf("--setting-sources: %q", args)
 	}
 }

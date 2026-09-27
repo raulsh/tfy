@@ -104,6 +104,51 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
 	return i, err
 }
 
+const listChildUnits = `-- name: ListChildUnits :many
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at FROM units WHERE parent_unit_id = ?1 ORDER BY seq
+`
+
+func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullString) ([]Unit, error) {
+	rows, err := q.db.QueryContext(ctx, listChildUnits, parentUnitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Unit{}
+	for rows.Next() {
+		var i Unit
+		if err := rows.Scan(
+			&i.ID,
+			&i.Seq,
+			&i.ProjectID,
+			&i.ParentUnitID,
+			&i.Kind,
+			&i.Title,
+			&i.Summary,
+			&i.Description,
+			&i.Origin,
+			&i.State,
+			&i.Attention,
+			&i.AttentionDetail,
+			&i.ReviewIteration,
+			&i.WorkspacePath,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnits = `-- name: ListUnits :many
 SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at FROM units
 WHERE (?1 IS NULL OR project_id = ?1)

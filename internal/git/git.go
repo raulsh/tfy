@@ -201,3 +201,58 @@ func (g *Git) FastForward(ctx context.Context, dir, target string) error {
 	_, err := g.run(ctx, dir, "merge", "--ff-only", "--quiet", target)
 	return err
 }
+
+// TreeEntry is a file in a commit's tree.
+type TreeEntry struct {
+	Mode string
+	Blob string
+	Path string
+}
+
+// ListFiles lists the files under paths (files or directories) in rev's tree.
+// It works in bare repositories.
+func (g *Git) ListFiles(ctx context.Context, dir, rev string, paths ...string) ([]TreeEntry, error) {
+	out, err := g.run(ctx, dir, append([]string{"ls-tree", "-r", "--full-tree", rev, "--"}, paths...)...)
+	if err != nil || out == "" {
+		return nil, err
+	}
+	var entries []TreeEntry
+	for _, line := range strings.Split(out, "\n") {
+		meta, path, ok := strings.Cut(line, "\t")
+		f := strings.Fields(meta)
+		if !ok || len(f) != 3 || f[1] != "blob" {
+			continue
+		}
+		entries = append(entries, TreeEntry{Mode: f[0], Blob: f[2], Path: path})
+	}
+	return entries, nil
+}
+
+// ReadBlob returns a blob's content.
+func (g *Git) ReadBlob(ctx context.Context, dir, blob string) (string, error) {
+	cmd := exec.CommandContext(ctx, g.bin(), "cat-file", "blob", blob)
+	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return "", &Error{Args: []string{"cat-file", "blob", blob}, Stderr: stderr.String(), Err: err}
+	}
+	return stdout.String(), nil
+}
+
+// HashFiles returns the blob id git would store for each file (paths
+// relative to dir), in order.
+func (g *Git) HashFiles(ctx context.Context, dir string, files []string) ([]string, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	out, err := g.run(ctx, dir, append([]string{"hash-object", "--"}, files...)...)
+	if err != nil {
+		return nil, err
+	}
+	ids := strings.Split(out, "\n")
+	if len(ids) != len(files) {
+		return nil, fmt.Errorf("git hash-object returned %d ids for %d files", len(ids), len(files))
+	}
+	return ids, nil
+}

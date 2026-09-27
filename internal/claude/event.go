@@ -142,6 +142,7 @@ type HookEvent struct {
 	HookEvent string `json:"hook_event"`
 	ExitCode  *int   `json:"exit_code"`
 	Outcome   string `json:"outcome"`
+	Stdout    string `json:"stdout"`
 	Stderr    string `json:"stderr"`
 }
 

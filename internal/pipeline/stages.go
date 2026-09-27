@@ -216,7 +216,10 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		return err
 	}
 
-	branch := domain.BranchName(u.Seq, u.Title)
+	branch, err := p.unitBranch(ctx, u, targets)
+	if err != nil {
+		return err
+	}
 	for _, ur := range targets {
 		if err := p.prepareBranch(ctx, u, ur, branch); err != nil {
 			return err
@@ -261,6 +264,21 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		return err
 	}
 	return p.enqueue(ctx, JobPublish, u, nil)
+}
+
+// unitBranch is the branch of the unit's change: the one earlier rounds
+// used, or a new name from the project's branch template.
+func (p *Pipeline) unitBranch(ctx context.Context, u db.Unit, targets []db.ListUnitReposRow) (string, error) {
+	for _, ur := range targets {
+		if ur.Branch != "" {
+			return ur.Branch, nil
+		}
+	}
+	project, err := p.Store.Q.GetProject(ctx, u.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	return domain.BranchName(domain.ParseProjectSettings(project.Settings).BranchTemplate, u.Seq, u.Kind, u.Title), nil
 }
 
 // prepareBranch refreshes base/<default> from the managed clone and checks

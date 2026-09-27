@@ -7,7 +7,7 @@ A reviewer compared your changes with docs/spec.md and asked for changes:
 {{trim .Findings}}
 </review-findings>
 
-Address every finding in the same checkouts and on the same branch ({{.Branch}}), run the relevant tests again, and commit. The rules from before still apply: commit locally, never push.
+Address every finding in the same checkouts and on the same branch ({{.Branch}}), run the relevant tests again, and commit. The rules from before still apply: follow each repository's conventions, commit locally, never push. If the change the pull request describes has moved, update its title and description too.
 {{- else -}}
 # Implement {{.Label}}: {{.Title}}
 
@@ -23,11 +23,13 @@ Acceptance criteria:
 {{end}}
 Rules:
 - Implement what the spec asks. If part of it is wrong or impossible, do the closest correct thing and explain why in your final summary.
-- Follow each repository's own conventions and instructions. Add or update tests, run the relevant test suites and linters, and fix what you break.
+- Follow each repository's conventions and instructions: how code is written and tested, and how commits and pull requests are written. Add or update tests, run the relevant test suites and linters, and fix what you break.
 - Only install dependencies the spec lists, or ones already declared in the repository's manifests.
-- Commit your work in each repository with clear messages. Do not push, add remotes, or open pull requests: tfy publishes the branches and opens the pull requests when you are done.
+- Commit your work in each repository, with messages that follow its conventions. Do not push, add remotes, or open pull requests: tfy publishes the branches and opens the pull requests with the title and description you return.
 - The shell's working directory persists between commands. Use `git -C <dir> …` and paths relative to the workspace root.
 - If the base branch has moved and your work conflicts with it, merge base/<branch> into your branch. Never rebase.
 {{- end}}
 
-Finish with the structured output: a summary of what you changed and why, and for each repository whether it changed, whether tests ran, and whether they passed.
+Finish with the structured output: a summary of what you changed and why, and for each repository whether it changed, whether tests ran, and whether they passed. For each repository that changed, also write its pull request:
+- pr_title: in the form the repository's conventions ask for (for example a Conventional Commits subject); otherwise short and imperative, at most 72 characters.
+- pr_body: markdown, following the repository's pull request template if it has one (.github/pull_request_template.md, .github/PULL_REQUEST_TEMPLATE.md or docs/pull_request_template.md) and its conventions; otherwise say what changed, why, and how it was tested. Either way, let a reviewer see how each acceptance criterion is met.

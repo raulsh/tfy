@@ -333,24 +333,8 @@ func (p *Pipeline) latestReview(ctx context.Context, u db.Unit) (ReviewMeta, boo
 // lastTestReport summarizes what the last development run said about its
 // tests, for the reviewer, who cannot run them.
 func (p *Pipeline) lastTestReport(ctx context.Context, u db.Unit) string {
-	run, err := p.Store.Q.LastSessionRun(ctx, db.LastSessionRunParams{UnitID: store.NullString(u.ID), Kind: "develop"})
-	if err != nil {
-		return ""
-	}
-	var out struct {
-		Repos []struct {
-			Repo        string `json:"repo"`
-			Changed     bool   `json:"changed"`
-			TestsRun    bool   `json:"tests_run"`
-			TestsPassed bool   `json:"tests_passed"`
-			Notes       string `json:"notes"`
-		} `json:"repos"`
-	}
-	if json.Unmarshal([]byte(run.Result), &out) != nil {
-		return ""
-	}
 	var lines []string
-	for _, r := range out.Repos {
+	for _, r := range p.developReport(ctx, u).Repos {
 		switch {
 		case !r.TestsRun:
 			lines = append(lines, r.Repo+": tests not run")

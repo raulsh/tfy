@@ -11,9 +11,9 @@ import (
 )
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (id, name, slug, description, product_context, settings, created_at, updated_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
-RETURNING id, name, slug, description, product_context, settings, created_at, updated_at
+INSERT INTO projects (id, name, slug, description, product_context, conventions, settings, created_at, updated_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+RETURNING id, name, slug, description, product_context, settings, created_at, updated_at, conventions
 `
 
 type CreateProjectParams struct {
@@ -22,6 +22,7 @@ type CreateProjectParams struct {
 	Slug           string    `json:"slug"`
 	Description    string    `json:"description"`
 	ProductContext string    `json:"product_context"`
+	Conventions    string    `json:"conventions"`
 	Settings       string    `json:"settings"`
 	Now            time.Time `json:"now"`
 }
@@ -33,6 +34,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		arg.Slug,
 		arg.Description,
 		arg.ProductContext,
+		arg.Conventions,
 		arg.Settings,
 		arg.Now,
 	)
@@ -46,6 +48,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Conventions,
 	)
 	return i, err
 }
@@ -60,7 +63,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id string) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, name, slug, description, product_context, settings, created_at, updated_at FROM projects WHERE id = ?1
+SELECT id, name, slug, description, product_context, settings, created_at, updated_at, conventions FROM projects WHERE id = ?1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
@@ -75,12 +78,13 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Conventions,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, name, slug, description, product_context, settings, created_at, updated_at FROM projects ORDER BY name
+SELECT id, name, slug, description, product_context, settings, created_at, updated_at, conventions FROM projects ORDER BY name
 `
 
 func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
@@ -101,6 +105,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 			&i.Settings,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Conventions,
 		); err != nil {
 			return nil, err
 		}
@@ -117,15 +122,17 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
-SET name = ?1, description = ?2, product_context = ?3, settings = ?4, updated_at = ?5
-WHERE id = ?6
-RETURNING id, name, slug, description, product_context, settings, created_at, updated_at
+SET name = ?1, description = ?2, product_context = ?3, conventions = ?4,
+    settings = ?5, updated_at = ?6
+WHERE id = ?7
+RETURNING id, name, slug, description, product_context, settings, created_at, updated_at, conventions
 `
 
 type UpdateProjectParams struct {
 	Name           string    `json:"name"`
 	Description    string    `json:"description"`
 	ProductContext string    `json:"product_context"`
+	Conventions    string    `json:"conventions"`
 	Settings       string    `json:"settings"`
 	Now            time.Time `json:"now"`
 	ID             string    `json:"id"`
@@ -136,6 +143,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		arg.Name,
 		arg.Description,
 		arg.ProductContext,
+		arg.Conventions,
 		arg.Settings,
 		arg.Now,
 		arg.ID,
@@ -150,6 +158,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Conventions,
 	)
 	return i, err
 }

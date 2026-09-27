@@ -36,6 +36,7 @@ const (
 	JobCleanup = "cleanup"
 	JobTriage  = "triage"
 	JobRelease = "release"
+	JobLearn   = "learn"
 )
 
 // jobForState is the job that does the work of a working state; it is what
@@ -94,6 +95,7 @@ func New(d Deps) *Pipeline {
 	d.Jobs.Register(JobCleanup, jobs.Kind{Handler: p.unitJob(p.cleanup), SideEffects: true})
 	d.Jobs.Register(JobTriage, jobs.Kind{Handler: p.triage, Claude: true})
 	d.Jobs.Register(JobRelease, jobs.Kind{Handler: p.unitJob(p.release), Claude: true})
+	d.Jobs.Register(JobLearn, jobs.Kind{Handler: p.unitJob(p.learn), Claude: true})
 	d.Jobs.OnInterrupted = func(ctx context.Context, j db.Job) {
 		if j.UnitID.Valid {
 			p.flag(ctx, j.UnitID.String, domain.AttentionInterrupted,

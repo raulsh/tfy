@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -64,6 +65,58 @@ func (q *Queries) ListRunEvents(ctx context.Context, arg ListRunEventsParams) ([
 			&i.Seq,
 			&i.At,
 			&i.Type,
+			&i.Subtype,
+			&i.Tool,
+			&i.Summary,
+			&i.Payload,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnitDenials = `-- name: ListUnitDenials :many
+SELECT r.kind AS run_kind, e.subtype, e.tool, e.summary, e.payload FROM run_events e
+JOIN runs r ON r.id = e.run_id
+WHERE r.unit_id = ?1 AND e.type = 'system'
+  AND (e.subtype = 'permission_denied' OR (e.subtype = 'hook_response' AND json_extract(e.payload, '$.exit_code') = 2))
+ORDER BY e.at
+LIMIT ?2
+`
+
+type ListUnitDenialsParams struct {
+	UnitID sql.NullString `json:"unit_id"`
+	Lim    int64          `json:"lim"`
+}
+
+type ListUnitDenialsRow struct {
+	RunKind string `json:"run_kind"`
+	Subtype string `json:"subtype"`
+	Tool    string `json:"tool"`
+	Summary string `json:"summary"`
+	Payload string `json:"payload"`
+}
+
+// What the permission system and the guard refused during a unit's runs.
+func (q *Queries) ListUnitDenials(ctx context.Context, arg ListUnitDenialsParams) ([]ListUnitDenialsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUnitDenials, arg.UnitID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnitDenialsRow{}
+	for rows.Next() {
+		var i ListUnitDenialsRow
+		if err := rows.Scan(
+			&i.RunKind,
 			&i.Subtype,
 			&i.Tool,
 			&i.Summary,

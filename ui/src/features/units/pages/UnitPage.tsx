@@ -13,6 +13,7 @@ import { DocumentPanel } from "../components/DocumentPanel";
 import { ExecutionPanel } from "../components/ExecutionPanel";
 import { AttentionBanner, StageStepper, UnitActions, UnitStateTag } from "../components/parts";
 import { ReleasePanel } from "../components/ReleasePanel";
+import { RetrospectiveCard } from "../components/RetrospectiveCard";
 import { useUnit } from "../hooks";
 
 function tabLabel(icon: ReactNode, text: string, badge?: ReactNode) {
@@ -167,6 +168,7 @@ export default function UnitPage() {
 									))}
 								</Card>
 							)}
+							<RetrospectiveCard unit={unit} />
 							<Card title="Activity">
 								<ActivityList items={unit.activity} />
 							</Card>
@@ -178,6 +180,16 @@ export default function UnitPage() {
 									["Created", <TimeAgo key="c" at={unit.created_at} />],
 									["Updated", <TimeAgo key="u" at={unit.updated_at} />],
 									["Created by", unit.created_by || "you"],
+									...(unit.parent_unit_id
+										? [
+												[
+													unit.origin === "retrospective" ? "Proposed by" : "Follows",
+													<Link key="p" to={`/units/${unit.parent_unit_id}`}>
+														the earlier unit
+													</Link>,
+												] as [string, ReactNode],
+											]
+										: []),
 									["Review rounds", unit.review_iteration],
 									["Runs", `${unit.runs.length} (${usd(spend)})`],
 									[

@@ -6,7 +6,7 @@ Run on 2026-09-27 against a local sandbox: a unit-style workspace with two git r
 
 | # | Question | Answer | Consequence |
 |---|---|---|---|
-| 1 | Does `--setting-sources ""` skip CLAUDE.md? | **Yes.** The canary in `CLAUDE.md` came back UNKNOWN with `""` and was found with `project` (`q1-*`). | Keep `""` and inject each repo's `CLAUDE.md`/`AGENTS.md` into `--append-system-prompt`, labeled as repository instructions. When the file isn't injected and Claude reads it later, it may flag it as prompt injection (seen in the auto-mode run). |
+| 1 | Does `--setting-sources ""` skip CLAUDE.md? | **Yes.** The canary in `CLAUDE.md` came back UNKNOWN with `""` and was found with `project` (`q1-*`). | At first: keep `""` and inject each repo's `CLAUDE.md`/`AGENTS.md` into `--append-system-prompt`. **Superseded** by native loading; see "Conventions" below. |
 | 2 | Do `--settings` deny rules and hooks apply with empty setting sources? Do path-scoped allow rules work? | **Yes to all.** Hooks fire and deny rules apply. `Write(./docs/**)` in `dontAsk` allowed `docs/note.md` and denied `repo-b/note.md` (`q2-edit`). | Define and plan profiles can write only to `docs/`. |
 | 2b | Are deny rules enough to stop pushes? | **No.** `Bash(git push *)` blocked `git push origin main`, but `git -C . push origin main` **ran** (`q2-denyonly`). | The guard hook is the primary control; deny rules are only a second layer. |
 | 3 | Does the guard see `git -C x push`, `sh -c "git push"`, and `Monitor`? | **Yes.** With matcher `Bash\|Monitor`, the hook received all of them; `tool_input.command` holds the raw string (`q2-deny`). | The guard must parse `-C`, `sh -c`, env prefixes and compound commands itself. |
@@ -57,3 +57,18 @@ One bugfix unit went through every stage against `raulsh/thefactory-sandbox` (pr
 | release | 5s | $0.01 | Notes from sonnet. CI on the merge commit was followed until green; unit done. |
 
 Total: about $1.16 and 7 minutes of agent time, including the unnecessary round.
+
+## Conventions: native loading (2026-09-27)
+
+Checked with sonnet at low effort, against a unit-style workspace (a parent folder that is not a repo) holding one checkout. Canary words were planted in each kind of file.
+
+| Question | Answer | Consequence |
+|---|---|---|
+| With the workspace as cwd and `--setting-sources project`, what loads at start? | The workspace's `CLAUDE.md` and its `@imports` (`@app/AGENTS.md` worked). | tfy writes the workspace `CLAUDE.md` before every run: the project's conventions, plus imports of each checkout's `CLAUDE.md`, `.claude/CLAUDE.md` and always-on rules. |
+| And a checkout's own `CLAUDE.md` and `.claude/rules`? | **Only once Claude reads a file in the checkout**: then its `CLAUDE.md`, its always-on rules and its path-scoped rules (globs relative to the checkout) all loaded. A path-scoped rule in the workspace's own `.claude/rules` loaded the same way. | Nested loading is triggered by the Read tool, and an agent working through Bash alone might never trigger it. That is why the start-up files are imported eagerly; path-scoped rules are left to Claude Code. |
+| Do project-settings hooks and `attribution` apply, next to a `--settings` file? | **Yes.** Hooks from both fired, and `attribution: {"commit": "", "pr": ""}` in the project settings left no trailer on the commit. | The repositories' hooks and attribution go into the workspace's `.claude/settings.json`; tfy's guard, deny rules and default attribution stay in the flag settings. |
+| Are a checkout's own `.claude/settings.json` hooks loaded from the parent cwd? | Only the project root's settings load. | tfy merges each repository's hooks, from its default branch, into the workspace settings, wrapped to run from the checkout with `CLAUDE_PROJECT_DIR` set to it. |
+| Can a run edit `.claude/rules` and `.claude/settings.json`? | **Not in `dontAsk`**, even with `Edit(./.claude/**)` allowed: both were denied. **In `auto` mode, yes**: Write and Edit both worked. | A unit that changes the conventions goes through the normal develop run, in auto mode. |
+| Absolute-path rules | `Write(//abs/path/**)` together with `--add-dir` allowed exactly that folder and denied its sibling. | Available if a run ever needs to write outside its cwd. |
+
+`hook_response` events carry no hook command, so the monitor can't tell the guard from a repository's hooks by name. The guard prints a marker (`tfy-guard`) on stdout, which Claude Code doesn't show the model for PreToolUse hooks. Only responses carrying the marker count as the guard's, and a repository hook's non-blocking error doesn't abort the run.

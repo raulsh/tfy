@@ -7,6 +7,7 @@ import { Mono, TimeAgo } from "@/shared/components/misc";
 import { Card, OverlayDrawer } from "@/shared/components/OverlayDrawer";
 import { StatusTag } from "@/shared/components/StatusTag";
 import { type ProjectInput, useDeleteProject, useProject, useUnlinkRepo, useUpdateProject } from "../hooks";
+import { ConventionsTab } from "./ConventionsTab";
 import { RepoPicker } from "./RepoPicker";
 import { SlackSources } from "./SlackSources";
 
@@ -59,6 +60,7 @@ export function ProjectDrawer({ projectId, onClose }: { projectId?: string; onCl
 					items={[
 						{ key: "repos", label: "Repositories", children: <ReposTab project={project} /> },
 						{ key: "details", label: "Details", children: <DetailsTab project={project} /> },
+						{ key: "conventions", label: "Conventions", children: <ConventionsTab project={project} /> },
 						{ key: "settings", label: "Pipeline", children: <SettingsTab project={project} /> },
 						{ key: "slack", label: "Slack", children: <SlackSources projectId={project.id} /> },
 					]}
@@ -216,6 +218,29 @@ function SettingsTab({ project }: { project: Project }) {
 				</Form.Item>
 				<Form.Item name="triage_confidence_min" label="Triage confidence threshold">
 					<InputNumber min={0.1} max={1} step={0.05} />
+				</Form.Item>
+				<Form.Item
+					name="branch_template"
+					label="Branch names"
+					extra="{seq} is required; {slug} and {kind} are optional. Used for new units."
+					rules={[
+						{
+							validator: (_, v: string) =>
+								!v || (v.includes("{seq}") && /^[A-Za-z0-9._/{}-]+$/.test(v))
+									? Promise.resolve()
+									: Promise.reject(new Error("Letters, digits, . _ / - and the placeholders; must include {seq}")),
+						},
+					]}
+				>
+					<Input style={{ width: 260, fontFamily: "var(--tf-mono)" }} placeholder="tfy/u{seq}-{slug}" />
+				</Form.Item>
+				<Form.Item
+					name="learn_from_units"
+					label="Suggest convention updates after each unit"
+					valuePropName="checked"
+					extra="A retrospective looks at what went back and forth and may propose changes to CLAUDE.md, rules or hooks, as a unit to accept."
+				>
+					<Switch />
 				</Form.Item>
 				<Button type="primary" htmlType="submit" loading={update.isPending}>
 					Save

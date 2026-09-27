@@ -314,6 +314,7 @@ const actionLabels: Partial<Record<UnitAction, string>> = {
 	reopen: "Reopen",
 	"mark-released": "Mark released",
 	"follow-up": "Open a follow-up fix",
+	"suggest-conventions": "Suggest convention updates",
 };
 
 // The action buttons for the unit's current gate.
@@ -403,6 +404,13 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 				>
 					<Button size={size}>Mark released</Button>
 				</Popconfirm>
+			)}
+			{has("suggest-conventions") && (
+				<Tooltip title="A retrospective of this unit: it may propose changes to the repositories' CLAUDE.md, rules or hooks, as a new unit">
+					<Button size={size} onClick={() => run("suggest-conventions")} loading={busy("suggest-conventions")}>
+						Suggest convention updates
+					</Button>
+				</Tooltip>
 			)}
 			{has("rereview") && (
 				<Button size={size} onClick={() => run("rereview")} loading={busy("rereview")}>

@@ -46,6 +46,7 @@ func newRoot() *cobra.Command {
 		newInitCmd(),
 		newDoctorCmd(),
 		newHookGuardCmd(),
+		newHookStopCmd(),
 		newDevCmd(),
 	)
 	return root

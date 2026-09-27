@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {"type": "string"},
+    "title": {"type": "string"},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repo": {"type": "string"},
+          "file": {"type": "string"},
+          "kind": {"type": "string", "enum": ["instructions", "rule", "hook", "pr_template"]},
+          "change": {"type": "string"},
+          "why": {"type": "string"}
+        },
+        "required": ["repo", "file", "kind", "change", "why"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["summary", "title", "changes"],
+  "additionalProperties": false
+}

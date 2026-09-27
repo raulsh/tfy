@@ -126,6 +126,8 @@ const (
 	ActionAcknowledge = "acknowledge"
 	ActionMarkRelease = "mark-released"
 	ActionFollowUp    = "follow-up"
+	// ActionLearn runs a finished unit's retrospective (again).
+	ActionLearn = "suggest-conventions"
 )
 
 // ActionInput carries an action's parameters.
@@ -181,6 +183,10 @@ func AvailableActions(u db.Unit, busy bool) []string {
 	case domain.StateRejected:
 		if !busy {
 			out = append(out, ActionReopen)
+		}
+	case domain.StateDone:
+		if !busy && u.Origin != string(domain.OriginRetrospective) {
+			out = append(out, ActionLearn)
 		}
 	}
 	if attention == domain.AttentionNewFeedback {
@@ -277,7 +283,18 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		return p.reopen(ctx, u, actor)
 
 	case ActionMarkRelease:
-		return p.transition(ctx, u, domain.StateDone, actor, "marked released")
+		if u, err = p.transition(ctx, u, domain.StateDone, actor, "marked released"); err != nil {
+			return u, err
+		}
+		p.afterDone(ctx, u)
+		return u, nil
+
+	case ActionLearn:
+		if _, err := os.Stat(u.WorkspacePath); err != nil {
+			return u, &ConflictError{Msg: "the unit's workspace is gone, so there is nothing to look back at"}
+		}
+		p.activity(ctx, u.ID, actor, "retrospective", "retrospective requested", nil)
+		return u, p.enqueue(ctx, JobLearn, u, nil)
 
 	case ActionFollowUp:
 		return p.followUp(ctx, u, actor)

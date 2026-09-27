@@ -11,7 +11,9 @@
           "changed": {"type": "boolean"},
           "tests_run": {"type": "boolean"},
           "tests_passed": {"type": "boolean"},
-          "notes": {"type": "string"}
+          "notes": {"type": "string"},
+          "pr_title": {"type": "string"},
+          "pr_body": {"type": "string"}
         },
         "required": ["repo", "changed", "tests_run", "tests_passed"],
         "additionalProperties": false

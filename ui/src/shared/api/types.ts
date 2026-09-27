@@ -34,7 +34,8 @@ export type UnitAction =
 	| "reopen"
 	| "acknowledge"
 	| "mark-released"
-	| "follow-up";
+	| "follow-up"
+	| "suggest-conventions";
 
 export interface Unit {
 	id: string;
@@ -42,6 +43,7 @@ export interface Unit {
 	label: string;
 	project_id: string;
 	project_name?: string;
+	parent_unit_id?: string;
 	kind: string;
 	title: string;
 	summary: string;
@@ -253,6 +255,8 @@ export interface ProjectSettings {
 	post_review_to_github: boolean;
 	auto_accept_proposals: boolean;
 	triage_confidence_min: number;
+	branch_template: string;
+	learn_from_units: boolean;
 }
 
 export interface Repo {
@@ -270,6 +274,7 @@ export interface Project {
 	slug: string;
 	description: string;
 	product_context: string;
+	conventions: string;
 	settings: ProjectSettings;
 	repos: Repo[];
 	created_at: string;
@@ -326,4 +331,30 @@ export interface ConfigView {
 	data_dir: string;
 	config_file: string;
 	version: string;
+}
+
+// What Claude Code follows in a repository, as its default branch has it.
+export interface RepoConventions {
+	repo_id: string;
+	repo: string;
+	default_branch: string;
+	files: ConventionFile[];
+	hooks: ConventionHook[];
+	attribution?: { commit?: string; pr?: string };
+	error?: string;
+}
+
+export interface ConventionFile {
+	path: string;
+	kind: "instructions" | "rule" | "hook_script" | "settings" | "pr_template";
+	paths?: string[];
+	content: string;
+}
+
+export interface ConventionHook {
+	event: string;
+	matcher?: string;
+	type: string;
+	command?: string;
+	timeout?: number;
 }

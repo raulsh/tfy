@@ -36,3 +36,6 @@ UPDATE units SET review_iteration = @review_iteration, updated_at = @now WHERE i
 
 -- name: TouchUnit :exec
 UPDATE units SET updated_at = @now WHERE id = @id;
+
+-- name: ListChildUnits :many
+SELECT * FROM units WHERE parent_unit_id = @parent_unit_id ORDER BY seq;

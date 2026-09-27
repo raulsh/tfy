@@ -84,8 +84,11 @@ func (p *Pipeline) release(ctx context.Context, job db.Job, u db.Unit) error {
 		p.flag(ctx, u.ID, domain.AttentionFailed, "CI did not finish within two hours; check it and mark the unit released")
 		return &stopError{fmt.Errorf("CI timed out")}
 	}
-	_, err = p.transition(ctx, u, domain.StateDone, "system", "released: CI is green on every merge commit")
-	return err
+	if u, err = p.transition(ctx, u, domain.StateDone, "system", "released: CI is green on every merge commit"); err != nil {
+		return err
+	}
+	p.afterDone(ctx, u)
+	return nil
 }
 
 func failedConclusion(c string) bool {
@@ -175,5 +178,9 @@ func (p *Pipeline) followUp(ctx context.Context, u db.Unit, actor string) (db.Un
 	if err := p.enqueue(ctx, JobDefine, child, definePayload{}); err != nil {
 		return u, err
 	}
-	return p.transition(ctx, u, domain.StateDone, actor, "follow-up "+domain.Label(child.Seq)+" opened for the failing CI")
+	if u, err = p.transition(ctx, u, domain.StateDone, actor, "follow-up "+domain.Label(child.Seq)+" opened for the failing CI"); err != nil {
+		return u, err
+	}
+	p.afterDone(ctx, u)
+	return u, nil
 }

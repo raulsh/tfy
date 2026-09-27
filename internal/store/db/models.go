@@ -79,6 +79,7 @@ type Project struct {
 	Settings       string    `json:"settings"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	Conventions    string    `json:"conventions"`
 }
 
 type Repo struct {

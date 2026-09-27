@@ -27,7 +27,7 @@ type monitor struct {
 	denials     int
 
 	toolNames     map[string]string // tool_use id → tool name
-	hookResponses map[string]int    // tool → PreToolUse hook responses
+	hookResponses map[string]int    // tool → guard (PreToolUse hook) responses
 	executed      map[string]int    // tool → calls that ran (non-error results)
 	// commands are the shell commands (by tool_use id) that ran since the
 	// last push report, to check the CLI's report against. Denied or failed
@@ -125,6 +125,12 @@ func (m *monitor) observeSystem(ev Event) string {
 	case SubHookResponse:
 		h, ok := ev.Hook()
 		if !ok || h.HookEvent != "PreToolUse" {
+			return ""
+		}
+		if m.spec.GuardMarker != "" && !strings.Contains(h.Stdout, m.spec.GuardMarker) {
+			// A repository's own hook. How it went is between it and
+			// Claude Code; a guard that never ran is caught when its
+			// command's result arrives unguarded.
 			return ""
 		}
 		m.hookResponses[h.Tool()]++

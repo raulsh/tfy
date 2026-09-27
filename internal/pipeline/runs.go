@@ -78,14 +78,23 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 	}
 	profile.Apply(spec)
 	spec.Env = claude.BuildEnv(claude.EnvOptions{GitConfigGlobal: p.Paths.GitConfig(), GHConfigDir: p.Paths.GHConfig()})
-	if profile.Guarded {
-		guard := fmt.Sprintf("%q hook-guard --stage %s", p.Paths.GuardBin(), req.Kind)
-		spec.SettingsPath = runDir + "/settings.json"
-		settings := claude.GuardSettings(guard, req.Trusted)
-		if !p.Config.CommitAttribution {
-			settings.Attribution = &claude.Attribution{}
+	spec.GuardMarker = claude.GuardMarker
+	// A unit's runs load conventions the way Claude Code does in a
+	// repository: the workspace is made a Claude Code project first.
+	var cp claudeProject
+	if req.Unit.ID != "" {
+		urs, err := p.Store.Q.ListUnitRepos(ctx, req.Unit.ID)
+		if err != nil {
+			return db.Run{}, nil, err
 		}
-		if err := claude.WriteSettings(spec.SettingsPath, settings); err != nil {
+		if cp, err = p.prepareClaudeProject(ctx, req.Unit, urs, profile.Guarded); err != nil {
+			return db.Run{}, nil, fmt.Errorf("prepare the workspace for Claude: %w", err)
+		}
+		spec.SettingSources = []string{"project"}
+	}
+	if profile.Guarded {
+		spec.SettingsPath = runDir + "/settings.json"
+		if err := claude.WriteSettings(spec.SettingsPath, p.runSettings(req, cp, profile)); err != nil {
 			return db.Run{}, nil, err
 		}
 	}
@@ -112,6 +121,9 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 	}
 	if req.Unit.ID != "" {
 		p.activity(bg, req.Unit.ID, "system", "run", fmt.Sprintf("%s run started (%s)", req.Kind, stage.Model), map[string]string{"run_id": runID})
+		for _, note := range cp.Notes {
+			p.activity(bg, req.Unit.ID, "system", "conventions", note, map[string]string{"run_id": runID})
+		}
 	}
 	p.changed("run", runID)
 	topic := events.RunTopic(runID)

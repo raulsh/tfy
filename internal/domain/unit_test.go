@@ -54,12 +54,23 @@ func TestEveryStateHasAStage(t *testing.T) {
 }
 
 func TestBranchName(t *testing.T) {
-	got := BranchName(42, "Fix: /health returns 500 when the DB is down!")
+	got := BranchName(DefaultBranchTemplate, 42, "bugfix", "Fix: /health returns 500 when the DB is down!")
 	if got != "tfy/u42-fix-health-returns-500-when-the-db-is" {
 		t.Errorf("got %q", got)
 	}
-	if BranchName(1, "¡¿!") != "tfy/u1-unit" {
-		t.Error("empty slugs fall back to 'unit'")
+	if BranchName("", 1, "chore", "¡¿!") != "tfy/u1-unit" {
+		t.Error("empty slugs fall back to 'unit', and an empty template to the default")
+	}
+	if got := BranchName("{kind}/{seq}-{slug}", 7, "feature", "Add dark mode"); got != "feature/7-add-dark-mode" {
+		t.Errorf("custom template: got %q", got)
+	}
+	for _, bad := range []string{"fix/{slug}", "a b/{seq}", "/x/{seq}", "x//{seq}", "x/{seq}/", "x/{seq}-{title}", "x/../{seq}"} {
+		if ValidBranchTemplate(bad) {
+			t.Errorf("%q should be rejected", bad)
+		}
+		if got := BranchName(bad, 3, "chore", "Tidy"); got != "tfy/u3-tidy" {
+			t.Errorf("an invalid template %q must fall back to the default, got %q", bad, got)
+		}
 	}
 }
 

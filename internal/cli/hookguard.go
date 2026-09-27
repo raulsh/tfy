@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/raulsh/tfy/internal/claude"
 	"github.com/raulsh/tfy/internal/guard"
 )
 
@@ -19,7 +20,12 @@ func newHookGuardCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if code := runHookGuard(os.Stdin, os.Stderr); code != 0 {
+			code := runHookGuard(os.Stdin, os.Stderr)
+			// The marker tells the run's monitor this response is the
+			// guard's; Claude Code does not show a PreToolUse hook's stdout
+			// to the model.
+			fmt.Fprintln(os.Stdout, claude.GuardMarker)
+			if code != 0 {
 				return exitCode(code)
 			}
 			return nil

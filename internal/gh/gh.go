@@ -233,10 +233,75 @@ func (c *Client) PRCreate(ctx context.Context, repo, base, head, title, bodyFile
 	return lines[len(lines)-1], nil
 }
 
-// PREditBody replaces a pull request's description.
-func (c *Client) PREditBody(ctx context.Context, repo string, number int, bodyFile string) error {
-	_, err := c.run(ctx, "pr", "edit", strconv.Itoa(number), "--repo", repo, "--body-file", bodyFile)
+// PREdit replaces a pull request's description, and its title unless title
+// is empty.
+func (c *Client) PREdit(ctx context.Context, repo string, number int, title, bodyFile string) error {
+	args := []string{"pr", "edit", strconv.Itoa(number), "--repo", repo, "--body-file", bodyFile}
+	if title != "" {
+		args = append(args, "--title", title)
+	}
+	_, err := c.run(ctx, args...)
 	return err
+}
+
+// Comment is something a person wrote on a pull request.
+type Comment struct {
+	Author string `json:"author"`
+	Kind   string `json:"kind"` // comment, review, or inline
+	State  string `json:"state,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Body   string `json:"body"`
+}
+
+// PRDiscussion returns what people (not bots) wrote on a pull request: its
+// conversation, review summaries, and inline review comments.
+func (c *Client) PRDiscussion(ctx context.Context, repo string, number int) ([]Comment, error) {
+	type author struct {
+		Login string `json:"login"`
+	}
+	var pr struct {
+		Comments []struct {
+			Author author `json:"author"`
+			Body   string `json:"body"`
+		} `json:"comments"`
+		Reviews []struct {
+			Author author `json:"author"`
+			Body   string `json:"body"`
+			State  string `json:"state"`
+		} `json:"reviews"`
+	}
+	if err := c.runJSON(ctx, &pr, "pr", "view", strconv.Itoa(number), "--repo", repo, "--json", "comments,reviews"); err != nil {
+		return nil, err
+	}
+	var inline []struct {
+		User struct {
+			Login string `json:"login"`
+			Type  string `json:"type"`
+		} `json:"user"`
+		Body string `json:"body"`
+		Path string `json:"path"`
+	}
+	if err := c.runJSON(ctx, &inline, "api", fmt.Sprintf("repos/%s/pulls/%d/comments?per_page=100", repo, number)); err != nil {
+		return nil, err
+	}
+	bot := func(login string) bool { return strings.HasSuffix(login, "[bot]") }
+	var out []Comment
+	for _, x := range pr.Comments {
+		if !bot(x.Author.Login) && strings.TrimSpace(x.Body) != "" {
+			out = append(out, Comment{Author: x.Author.Login, Kind: "comment", Body: x.Body})
+		}
+	}
+	for _, x := range pr.Reviews {
+		if !bot(x.Author.Login) && (strings.TrimSpace(x.Body) != "" || x.State == "CHANGES_REQUESTED") {
+			out = append(out, Comment{Author: x.Author.Login, Kind: "review", State: x.State, Body: x.Body})
+		}
+	}
+	for _, x := range inline {
+		if !bot(x.User.Login) && x.User.Type != "Bot" {
+			out = append(out, Comment{Author: x.User.Login, Kind: "inline", Path: x.Path, Body: x.Body})
+		}
+	}
+	return out, nil
 }
 
 // PRReady marks a draft ready for review.

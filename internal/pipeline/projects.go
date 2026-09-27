@@ -15,10 +15,13 @@ import (
 
 // ProjectInput creates or updates a project.
 type ProjectInput struct {
-	Name           string                  `json:"name"`
-	Description    string                  `json:"description"`
-	ProductContext string                  `json:"product_context"`
-	Settings       *domain.ProjectSettings `json:"settings"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	ProductContext string `json:"product_context"`
+	// Conventions apply to every repository of the project; nil leaves
+	// them as they are.
+	Conventions *string                 `json:"conventions"`
+	Settings    *domain.ProjectSettings `json:"settings"`
 }
 
 // CreateProject registers a project.
@@ -31,9 +34,13 @@ func (p *Pipeline) CreateProject(ctx context.Context, in ProjectInput) (db.Proje
 	if in.Settings != nil {
 		settings = domain.ParseProjectSettings(in.Settings.JSON())
 	}
+	conventions := ""
+	if in.Conventions != nil {
+		conventions = strings.TrimSpace(*in.Conventions)
+	}
 	pr, err := p.Store.Q.CreateProject(ctx, db.CreateProjectParams{
 		ID: newID(), Name: name, Slug: domain.Slug(name, 40), Description: strings.TrimSpace(in.Description),
-		ProductContext: strings.TrimSpace(in.ProductContext), Settings: settings.JSON(), Now: store.Now(),
+		ProductContext: strings.TrimSpace(in.ProductContext), Conventions: conventions, Settings: settings.JSON(), Now: store.Now(),
 	})
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return pr, &ConflictError{Msg: "a project with that name already exists"}
@@ -61,9 +68,13 @@ func (p *Pipeline) UpdateProject(ctx context.Context, id string, in ProjectInput
 	if in.Settings != nil {
 		settings = domain.ParseProjectSettings(in.Settings.JSON())
 	}
+	conventions := cur.Conventions
+	if in.Conventions != nil {
+		conventions = strings.TrimSpace(*in.Conventions)
+	}
 	pr, err := p.Store.Q.UpdateProject(ctx, db.UpdateProjectParams{
 		Name: name, Description: strings.TrimSpace(in.Description), ProductContext: strings.TrimSpace(in.ProductContext),
-		Settings: settings.JSON(), Now: store.Now(), ID: id,
+		Conventions: conventions, Settings: settings.JSON(), Now: store.Now(), ID: id,
 	})
 	if err == nil {
 		p.changed("project", pr.ID)

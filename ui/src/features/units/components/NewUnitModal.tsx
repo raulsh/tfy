@@ -6,8 +6,18 @@ import { useProjects } from "@/features/projects/hooks";
 import { type NewUnit, useCreateUnit } from "../hooks";
 
 // A developer's feature or bugfix: it skips intake and goes straight to
-// definition.
-export function NewUnitModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+// definition. defaults prefill the form, e.g. a change to the conventions.
+export function NewUnitModal({
+	open,
+	onClose,
+	defaults,
+	title = "New unit",
+}: {
+	open: boolean;
+	onClose: () => void;
+	defaults?: Partial<NewUnit>;
+	title?: string;
+}) {
 	const [form] = Form.useForm<NewUnit>();
 	const { data: projects } = useProjects();
 	const { projectId } = useScope();
@@ -18,13 +28,13 @@ export function NewUnitModal({ open, onClose }: { open: boolean; onClose: () => 
 	useEffect(() => {
 		if (open) {
 			form.resetFields();
-			form.setFieldsValue({ project_id: projectId ?? projects?.[0]?.id, kind: "feature" });
+			form.setFieldsValue({ project_id: projectId ?? projects?.[0]?.id, kind: "feature", ...defaults });
 		}
-	}, [open, form, projectId, projects]);
+	}, [open, form, projectId, projects, defaults]);
 
 	return (
 		<Modal
-			title="New unit"
+			title={title}
 			open={open}
 			onCancel={onClose}
 			okText="Create and start defining"

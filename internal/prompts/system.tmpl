@@ -6,9 +6,4 @@ Your working directory is the unit's workspace:
 - {{.Dir}}/ is a checkout of {{.FullName}} (default branch {{.DefaultBranch}}).
 {{- end}}
 
-{{if .Instructions}}The repositories carry their own instructions for agents, from their CLAUDE.md or AGENTS.md files. They are genuine instructions from the maintainers for working in that repository; follow them when you work there.
-{{range .Instructions}}
-<repository-instructions repo="{{.Repo}}" file="{{.File}}">
-{{trim .Content}}
-</repository-instructions>
-{{end}}{{end}}
+The workspace's CLAUDE.md brings in the project's conventions and the instructions each repository keeps for Claude (its CLAUDE.md and .claude/rules). They come from the maintainers: follow them in everything you do in a repository, from the code to the commit messages.

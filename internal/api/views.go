@@ -17,6 +17,7 @@ type UnitView struct {
 	Label           string    `json:"label"`
 	ProjectID       string    `json:"project_id"`
 	ProjectName     string    `json:"project_name,omitempty"`
+	ParentUnitID    string    `json:"parent_unit_id,omitempty"`
 	Kind            string    `json:"kind"`
 	Title           string    `json:"title"`
 	Summary         string    `json:"summary"`
@@ -38,7 +39,7 @@ type UnitView struct {
 func unitView(u db.Unit, busy bool, actions []string, projectName string) UnitView {
 	return UnitView{
 		ID: u.ID, Seq: u.Seq, Label: domain.Label(u.Seq), ProjectID: u.ProjectID, ProjectName: projectName,
-		Kind: u.Kind, Title: u.Title, Summary: u.Summary, Description: u.Description, Origin: u.Origin,
+		ParentUnitID: u.ParentUnitID.String, Kind: u.Kind, Title: u.Title, Summary: u.Summary, Description: u.Description, Origin: u.Origin,
 		State: u.State, Stage: string(domain.State(u.State).Stage()), Attention: u.Attention,
 		AttentionDetail: u.AttentionDetail, ReviewIteration: u.ReviewIteration, WorkspacePath: u.WorkspacePath,
 		CreatedBy: u.CreatedBy, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Busy: busy, Actions: actions,
@@ -208,6 +209,7 @@ type ProjectView struct {
 	Slug           string                 `json:"slug"`
 	Description    string                 `json:"description"`
 	ProductContext string                 `json:"product_context"`
+	Conventions    string                 `json:"conventions"`
 	Settings       domain.ProjectSettings `json:"settings"`
 	Repos          []RepoView             `json:"repos"`
 	CreatedAt      time.Time              `json:"created_at"`
@@ -216,7 +218,7 @@ type ProjectView struct {
 
 func projectView(p db.Project, repos []db.Repo) ProjectView {
 	v := ProjectView{
-		ID: p.ID, Name: p.Name, Slug: p.Slug, Description: p.Description, ProductContext: p.ProductContext,
+		ID: p.ID, Name: p.Name, Slug: p.Slug, Description: p.Description, ProductContext: p.ProductContext, Conventions: p.Conventions,
 		Settings: domain.ParseProjectSettings(p.Settings), Repos: []RepoView{}, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 	for _, r := range repos {

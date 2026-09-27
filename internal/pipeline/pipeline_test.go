@@ -103,7 +103,7 @@ func fakeClaude() int {
 			time.Sleep(step / 2)
 			if guarded {
 				emit(map[string]any{"type": "system", "subtype": "hook_started", "hook_id": id, "hook_name": "PreToolUse:" + name, "hook_event": "PreToolUse"})
-				emit(map[string]any{"type": "system", "subtype": "hook_response", "hook_id": id, "hook_name": "PreToolUse:" + name, "hook_event": "PreToolUse", "exit_code": 0, "outcome": "success"})
+				emit(map[string]any{"type": "system", "subtype": "hook_response", "hook_id": id, "hook_name": "PreToolUse:" + name, "hook_event": "PreToolUse", "exit_code": 0, "outcome": "success", "stdout": claude.GuardMarker + "\n"})
 			}
 			emit(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": result}}}})
 		}
@@ -121,7 +121,7 @@ func fakeClaude() int {
 	if dir := os.Getenv("FAKE_CONTROL"); dir != "" {
 		_ = os.MkdirAll(dir, 0o755)
 		kind := "other"
-		for k, marker := range map[string]string{"define": "open_questions", "plan": "acceptance_criteria", "triage": "group_key", "develop": "tests_passed"} {
+		for k, marker := range map[string]string{"define": "open_questions", "plan": "acceptance_criteria", "triage": "group_key", "develop": "tests_passed", "learn": "pr_template"} {
 			if strings.Contains(schema, marker) {
 				kind = k
 			}
@@ -130,10 +130,19 @@ func fakeClaude() int {
 			kind = "review"
 		}
 		_ = os.WriteFile(filepath.Join(dir, "prompt-"+kind+".txt"), prompt, 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "args-"+kind+".json"), must(json.Marshal(args)), 0o644)
 	}
 
 	var out any
 	switch {
+	case strings.Contains(schema, "pr_template"):
+		// The retrospective: $FAKE_CONTROL/learn.json, or nothing to change.
+		out = map[string]any{"summary": "Nothing to change.", "title": "", "changes": []any{}}
+		if b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "learn.json")); err == nil {
+			var v any
+			_ = json.Unmarshal(b, &v)
+			out = v
+		}
 	case strings.Contains(schema, "group_key"):
 		out = fakeTriage(string(prompt))
 	case strings.Contains(schema, "open_questions"):
@@ -156,11 +165,14 @@ func fakeClaude() int {
 			out.(map[string]any)["findings"] = []map[string]any{{"severity": "major", "repo": "acme/app", "file": "health.txt", "line": 1, "message": "say degraded, not ok"}}
 		}
 	case strings.Contains(schema, "tests_passed"):
+		var repos []any
 		for _, d := range gitDirs(cwd) {
 			b, _ := exec.Command("git", "-C", d, "rev-parse", "--abbrev-ref", "HEAD").Output()
 			if !strings.HasPrefix(strings.TrimSpace(string(b)), "tfy/") {
 				continue
 			}
+			repos = append(repos, map[string]any{"repo": d, "changed": true, "tests_run": true, "tests_passed": true,
+				"pr_title": "fix: report degraded health", "pr_body": "## What\n\nHealth says degraded when the database is down (AC-1)."})
 			// Append, so every development round has something to commit.
 			f, _ := os.OpenFile(filepath.Join(d, "health.txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 			fmt.Fprintf(f, "degraded %d\n", time.Now().UnixNano())
@@ -172,7 +184,10 @@ func fakeClaude() int {
 				}
 			}
 		}
-		out = map[string]any{"summary": "done", "repos": []any{}}
+		if repos == nil {
+			repos = []any{}
+		}
+		out = map[string]any{"summary": "done", "repos": repos}
 	default:
 		if !strings.Contains(string(prompt), "Write the release notes") {
 			fmt.Fprintln(os.Stderr, "fake claude: unknown run")
@@ -191,6 +206,13 @@ func fakeClaude() int {
 		"session_id": sid, "result": resultText, "structured_output": out, "permission_denials": []any{},
 		"usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
 	return 0
+}
+
+func must(b []byte, err error) []byte {
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
 var messageBlock = regexp.MustCompile(`(?s)<message id="([^"]+)"[^>]*>\n(.*?)\n</message>`)
@@ -351,6 +373,15 @@ func fakeGH() int {
 		fmt.Println(string(b))
 	}
 	repo := flagValue(args, "--repo")
+	if args[0] == "api" && strings.HasPrefix(args[1], "repos/") && strings.Contains(args[1], "/comments") {
+		// Inline review comments: $FAKE_CONTROL/pr-comments.json, or none.
+		b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "pr-comments.json"))
+		if err != nil {
+			b = []byte("[]")
+		}
+		fmt.Println(string(b))
+		return 0
+	}
 	switch args[0] + " " + args[1] {
 	case "auth status":
 		fmt.Println("Logged in to github.com (fake)")
@@ -393,6 +424,9 @@ func fakeGH() int {
 		for i := range prs {
 			if fmt.Sprint(prs[i].Number) == args[2] {
 				prs[i].Body = string(body)
+				if t := flagValue(args, "--title"); t != "" {
+					prs[i].Title = t
+				}
 			}
 		}
 		savePRs(repo, prs)
@@ -525,6 +559,16 @@ func newHarness(t *testing.T) *harness {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go q.Run(ctx)
+	// Work a test did not wait for (a retrospective after a unit is done)
+	// must finish before the temporary directories go.
+	t.Cleanup(func() {
+		for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			var n int
+			if err := st.DB.QueryRow(`SELECT COUNT(*) FROM jobs WHERE status = 'running'`).Scan(&n); err != nil || n == 0 {
+				return
+			}
+		}
+	})
 	return &harness{t: t, p: p, st: st, remotes: remotes, control: filepath.Join(root, "control"), cancel: cancel}
 }
 
@@ -543,7 +587,12 @@ func (h *harness) project() db.Project {
 
 func (h *harness) waitState(id string, want domain.State) db.Unit {
 	h.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	return h.waitStateFor(id, want, 20*time.Second)
+}
+
+func (h *harness) waitStateFor(id string, want domain.State, limit time.Duration) db.Unit {
+	h.t.Helper()
+	deadline := time.Now().Add(limit)
 	for {
 		u, err := h.st.Q.GetUnit(context.Background(), id)
 		if err != nil {
@@ -664,13 +713,18 @@ func TestUnitFromIdeaToMergedPR(t *testing.T) {
 	if out, err := exec.Command("git", "-C", remote, "log", "--format=%s|%an", ur.Branch).Output(); err != nil || !strings.Contains(string(out), "report degraded health|Factory Test") {
 		t.Fatalf("pushed branch log = %q (%v)", out, err)
 	}
-	body := loadPRs("acme/app")[0].Body
-	if !strings.Contains(body, "AC-1") || !strings.Contains(body, "U-1") {
-		t.Errorf("pull request body:\n%s", body)
+	// The title and description are the development run's, written by the
+	// repository's conventions; tfy only adds an invisible marker.
+	opened := loadPRs("acme/app")[0]
+	if opened.Title != "fix: report degraded health" {
+		t.Errorf("pull request title = %q", opened.Title)
+	}
+	if !strings.HasPrefix(opened.Body, "## What") || !strings.Contains(opened.Body, "AC-1") || !strings.Contains(opened.Body, "<!-- tfy:U-1 -->") {
+		t.Errorf("pull request body:\n%s", opened.Body)
 	}
 
 	// Opening the pull request again (a retried publish) reuses it.
-	n, url, err := h.p.ensurePR(ctx, u, ur, SpecMeta{}, false, nil)
+	n, url, err := h.p.ensurePR(ctx, u, ur, SpecMeta{}, prText{}, false, nil)
 	if err != nil || n != 1 || url != ur.PrUrl {
 		t.Fatalf("ensurePR again = %d %s (%v)", n, url, err)
 	}

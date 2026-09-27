@@ -1,6 +1,10 @@
 package domain
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"regexp"
+	"strings"
+)
 
 // ProjectSettings is the JSON in projects.settings. Zero values mean the
 // defaults below.
@@ -12,6 +16,11 @@ type ProjectSettings struct {
 	PostReviewToGitHub  bool    `json:"post_review_to_github"`
 	AutoAcceptProposals bool    `json:"auto_accept_proposals"`
 	TriageConfidenceMin float64 `json:"triage_confidence_min"`
+	// BranchTemplate names unit branches; see BranchName.
+	BranchTemplate string `json:"branch_template"`
+	// LearnFromUnits runs a retrospective when a unit is done, which may
+	// propose changes to the repositories' Claude Code conventions.
+	LearnFromUnits bool `json:"learn_from_units"`
 }
 
 // DefaultProjectSettings are applied to new projects.
@@ -21,6 +30,8 @@ func DefaultProjectSettings() ProjectSettings {
 		DeleteBranch:        true,
 		MaxReviewIterations: 2,
 		TriageConfidenceMin: 0.6,
+		BranchTemplate:      DefaultBranchTemplate,
+		LearnFromUnits:      true,
 	}
 }
 
@@ -40,6 +51,9 @@ func ParseProjectSettings(raw string) ProjectSettings {
 	if s.TriageConfidenceMin <= 0 || s.TriageConfidenceMin > 1 {
 		s.TriageConfidenceMin = 0.6
 	}
+	if !ValidBranchTemplate(s.BranchTemplate) {
+		s.BranchTemplate = DefaultBranchTemplate
+	}
 	return s
 }
 
@@ -47,4 +61,24 @@ func ParseProjectSettings(raw string) ProjectSettings {
 func (s ProjectSettings) JSON() string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// DefaultBranchTemplate is the branch name of a unit unless the project
+// sets its own.
+const DefaultBranchTemplate = "tfy/u{seq}-{slug}"
+
+var branchTemplateChars = regexp.MustCompile(`^[A-Za-z0-9._/{}-]+$`)
+
+// ValidBranchTemplate reports whether t yields valid, unique branch names:
+// only safe characters, the {seq} placeholder (so two units never share a
+// branch), and no empty path segments.
+func ValidBranchTemplate(t string) bool {
+	if !branchTemplateChars.MatchString(t) || !strings.Contains(t, "{seq}") {
+		return false
+	}
+	if strings.HasPrefix(t, "/") || strings.HasSuffix(t, "/") || strings.Contains(t, "//") || strings.Contains(t, "..") {
+		return false
+	}
+	rest := strings.NewReplacer("{seq}", "", "{slug}", "", "{kind}", "").Replace(t)
+	return !strings.ContainsAny(rest, "{}")
 }

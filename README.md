@@ -36,7 +36,7 @@ It runs locally. `tfy serve` is the backend and serves the UI on `127.0.0.1`.
 
 ```sh
 make install            # builds the UI and the binary into ~/.local/bin
-tfy init         # creates ~/.tfy
+tfy init         # creates ~/.tfy (moves ~/.thefactory there, if you used the old name)
 tfy doctor       # checks claude, gh, git, slk
 tfy serve --open # prints a link with a token, and opens it
 ```
@@ -50,6 +50,23 @@ tfy serve --open # prints a link with a token, and opens it
 
 To try the whole pipeline without spending tokens or touching GitHub, run `make demo`. It serves on port 7430 against fake `claude` and `gh` and a local "GitHub". Link `acme/app` to a project to start.
 
+## Conventions
+
+Projects want consistency: how commits are written, how pull requests are opened and described, how code is tested. Claude Code already knows how to follow such rules, so tfy does not reinvent them. It keeps them where Claude Code reads them, and makes its runs load them the way a session started in the repository would.
+
+- **In each repository**, versioned and reviewed with the code, so people using Claude Code by hand follow the same rules:
+  - `CLAUDE.md` for what every session must know, and `.claude/rules/*.md` for topics or areas (`paths:` frontmatter scopes a rule to matching files);
+  - hooks in `.claude/settings.json`, with scripts in `.claude/hooks/`, for checks that must never be skipped, like rejecting a commit message that breaks the rules;
+  - `attribution` in `.claude/settings.json`; where a repository doesn't set it, tfy's runs add no `Co-Authored-By` trailer;
+  - the pull request template, `.github/pull_request_template.md`.
+- **Across a project**, for rules its repositories share: the project's Conventions tab in tfy.
+
+Before every run, tfy writes the unit workspace's `CLAUDE.md`, which holds the project's conventions and imports each checkout's `CLAUDE.md` and always-on rules, and its `.claude/settings.json`, with the repositories' hooks and attribution. Claude Code does the rest itself: path-scoped rules, nested `CLAUDE.md` files and imports. Claude writes the commit messages and the pull request title and description following those conventions; tfy only pushes and opens the pull request with them. Branch names follow the project's template (Pipeline tab, `tfy/u{seq}-{slug}` by default).
+
+Hooks run outside the permission system, so tfy only takes them from the default branch, the reviewed version. It leaves a repository's hooks out of a run when that checkout's `.claude/hooks` differs from the default branch, and says so in the unit's activity.
+
+**They improve unit after unit.** When a unit is done, a retrospective run looks at what went back and forth: review rounds, what people asked to change, comments on the pull requests, refused commands, failed CI. If that shows a gap in the conventions, it opens a unit (origin *retrospective*) proposing the change to `CLAUDE.md`, a rule, a hook or the pull request template. You accept or reject it like any proposal, and an accepted one lands as a reviewed pull request in the repository. The Conventions tab shows what each repository has today, and **Propose a change** starts such a unit by hand. Turn retrospectives off per project in the Pipeline tab.
+
 ## How agents are kept in their lane
 
 Each Claude run gets only what its stage needs, and several layers stop it from publishing on its own:
@@ -57,13 +74,14 @@ Each Claude run gets only what its stage needs, and several layers stop it from 
 - **Isolated checkouts.** Every unit works in its own `git clone --local` checkouts, **with no remote**. Only tfy pushes and opens pull requests, using your credentials.
 - **No publishing credentials.** Runs start from a scrubbed environment: no `GH_TOKEN`, no SSH agent, an empty `gh` configuration, and a gitconfig with no credential helper.
 - **A guard hook.** Every shell command passes through `tfy hook-guard`, which parses it and blocks pushes, remote and credential changes, and `gh`. It catches `git -C`, `sh -c`, `eval`, wrappers, and command substitutions. If the guard fails to run, the run is aborted, because the CLI itself would fail open.
-- **Isolated settings.** Runs use `--setting-sources ""`, strict MCP with no servers, an explicit tool list, and a permission mode per stage:
+- **Isolated settings.** A unit's runs load only the workspace as a Claude Code project (`--setting-sources project`), whose settings tfy rewrites before every run; user settings, MCP servers (strict, none) and anything an agent left in the workspace's `.claude` stay out. Each run has an explicit tool list and a permission mode per stage:
 
   | Stage | Mode | Access |
   |---|---|---|
   | define | `dontAsk` | writes `docs/` only |
   | plan | `dontAsk` | writes `docs/` only; read-only commands |
   | develop | `auto` | the checkouts |
+  | review, retrospective | `dontAsk` | read-only commands |
 
 - **Two human gates.** No code is written until you approve a spec, and nothing merges until you do.
 - **Local-only server.** It binds to 127.0.0.1, checks `Host` (against DNS rebinding) and `Origin`, and requires a per-install token.
