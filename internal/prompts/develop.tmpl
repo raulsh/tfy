@@ -27,7 +27,7 @@ Rules:
 - Follow each repository's conventions and instructions: how code is written and tested, and how commits and pull requests are written. Add or update tests, run the relevant test suites and linters, and fix what you break.
 - Only install dependencies the spec lists, or ones already declared in the repository's manifests.
 - Commit your work in each repository, with messages that follow its conventions. Do not push, add remotes, or open pull requests: tfy publishes the branches and opens the pull requests with the title and description you return.
-- The shell's working directory persists between commands. Use `git -C <dir> …` and paths relative to the workspace root.
+- Every shell command starts in the workspace root, so a `cd` lasts for that command only. Use `git -C <dir> …`, or `cd <dir> && …` within one command, and paths relative to the workspace root.
 - If the base branch has moved and your work conflicts with it, merge base/<branch> into your branch. Never rebase.
 {{- end}}
 

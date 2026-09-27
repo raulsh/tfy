@@ -64,8 +64,10 @@ func TestVariadicFlagsLast(t *testing.T) {
 	if i < 0 {
 		t.Fatal("no --allowedTools")
 	}
-	if got := args[i+1:]; !slices.Equal(got, []string{"Read", "Edit(./docs/**)", "Write(./docs/**)"}) {
-		t.Errorf("allowed tools = %q; each rule must be its own argument, and last", got)
+	// Relative path rules are anchored to the working directory: the CLI
+	// would resolve them against wherever the shell last cd'd to.
+	if got := args[i+1:]; !slices.Equal(got, []string{"Read", "Edit(//w/docs/**)", "Write(//w/docs/**)"}) {
+		t.Errorf("allowed tools = %q; each rule must be its own argument, absolute, and last", got)
 	}
 }
 
@@ -113,7 +115,7 @@ func TestBuildEnvDropsPublishingCredentials(t *testing.T) {
 			t.Errorf("%s leaked into the run", bad)
 		}
 	}
-	for _, want := range []string{"GOPATH=/go", "GIT_CONFIG_GLOBAL=/f/gitconfig", "GH_CONFIG_DIR=/f/gh", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "TERM=xterm"} {
+	for _, want := range []string{"GOPATH=/go", "GIT_CONFIG_GLOBAL=/f/gitconfig", "GH_CONFIG_DIR=/f/gh", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1", "TERM=xterm"} {
 		if !slices.Contains(env, want) {
 			t.Errorf("missing %s", want)
 		}
@@ -129,5 +131,16 @@ func TestAttributionSettingsSerializeEmptyStrings(t *testing.T) {
 	b, _ := json.Marshal(s)
 	if !strings.Contains(string(b), `"attribution":{"commit":"","pr":""}`) {
 		t.Fatalf("settings = %s", b)
+	}
+}
+
+func TestAnchorRules(t *testing.T) {
+	got := anchorRules([]string{"Read", "Write(./docs/**)", "Bash(git diff *)", "Edit(//already/abs/**)", "Edit(src/**)"}, "/home/u/.tfy/workspaces/u5-x")
+	want := []string{"Read", "Write(//home/u/.tfy/workspaces/u5-x/docs/**)", "Bash(git diff *)", "Edit(//already/abs/**)", "Edit(src/**)"}
+	if !slices.Equal(got, want) {
+		t.Errorf("anchorRules = %q, want %q", got, want)
+	}
+	if got := anchorRules([]string{"Write(./docs/**)"}, "relative"); got[0] != "Write(./docs/**)" {
+		t.Error("without an absolute working directory, rules stay as they are")
 	}
 }

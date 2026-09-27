@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -161,13 +163,32 @@ func (s *Spec) Args() []string {
 	}
 	if len(s.AllowedTools) > 0 {
 		args = append(args, "--allowedTools")
-		args = append(args, s.AllowedTools...)
+		args = append(args, anchorRules(s.AllowedTools, s.Cwd)...)
 	}
 	if len(s.DisallowedTools) > 0 {
 		args = append(args, "--disallowedTools")
-		args = append(args, s.DisallowedTools...)
+		args = append(args, anchorRules(s.DisallowedTools, s.Cwd)...)
 	}
 	return args
+}
+
+var relativeRule = regexp.MustCompile(`^(\w+)\(\./(.*)\)$`)
+
+// anchorRules makes path rules relative to the run's working directory,
+// like `Write(./docs/**)`, absolute (`Write(//abs/docs/**)`). The CLI
+// resolves `./` against the shell's current directory, which a `cd` moves.
+func anchorRules(rules []string, cwd string) []string {
+	if !filepath.IsAbs(cwd) {
+		return rules
+	}
+	out := make([]string, len(rules))
+	for i, r := range rules {
+		if m := relativeRule.FindStringSubmatch(r); m != nil {
+			r = m[1] + "(/" + filepath.ToSlash(filepath.Join(cwd, m[2])) + ")"
+		}
+		out[i] = r
+	}
+	return out
 }
 
 // String renders the command line for logs, with the long JSON arguments

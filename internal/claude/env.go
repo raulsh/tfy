@@ -51,6 +51,11 @@ func BuildEnv(opts EnvOptions) []string {
 		// Auto memory is shared by every checkout of a repo; runs must not
 		// leak context into each other.
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
+		// Every shell command starts in the run's working directory. Left to
+		// persist, a `cd` into a checkout moves the directory the CLI
+		// resolves relative permission rules against: `Write(./docs/**)`
+		// then no longer covers the unit's docs (docs/spike.md).
+		"CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1",
 		"GIT_TERMINAL_PROMPT=0",
 		// No agent, no default identities: ssh can't authenticate a push.
 		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o BatchMode=yes",

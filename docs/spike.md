@@ -39,7 +39,7 @@ Run on 2026-09-27 against a local sandbox: a unit-style workspace with two git r
 - `git -C repo-a push <bare-repo-path> HEAD:main` was blocked by the guard (exit 2, our message fed back to Claude), and the bare repo was unchanged.
 - The run succeeded: 6 turns, $0.08 on sonnet at low effort.
 
-Found along the way: **the Bash tool's working directory persists between calls**. After a `cd repo-a`, a later `cd repo-b` failed. Prompts tell Claude to use `git -C <repo>` and paths relative to the workspace root.
+Found along the way: **the Bash tool's working directory persists between calls**. After a `cd repo-a`, a later `cd repo-b` failed. Runs now set `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`; see "The shell's directory and path rules" below.
 
 ## First real run (2026-09-27)
 
@@ -72,3 +72,20 @@ Checked with sonnet at low effort, against a unit-style workspace (a parent fold
 | Absolute-path rules | `Write(//abs/path/**)` together with `--add-dir` allowed exactly that folder and denied its sibling. | Available if a run ever needs to write outside its cwd. |
 
 `hook_response` events carry no hook command, so the monitor can't tell the guard from a repository's hooks by name. The guard prints a marker (`tfy-guard`) on stdout, which Claude Code doesn't show the model for PreToolUse hooks. Only responses carrying the marker count as the guard's, and a repository hook's non-blocking error doesn't abort the run.
+
+## The shell's directory and path rules (2026-09-27)
+
+Seen for real: plan runs on a ten-repository project ended without `docs/spec.md`. Both Write calls were denied in `dontAsk` (`decision_reason_type: "mode"`), even though the run had `Write(./docs/**)`. In every such run, the last shell command before the Write had `cd`'d into a checkout. In a run whose `cd` into a checkout was itself denied, the Write went through.
+
+Reproduced with sonnet at low effort. The workspace is not a repo, `app/` is a checkout, and each run ran `cd app && ls`, then Wrote `docs/x.md`, then ran `pwd`:
+
+| Variant | Write | `pwd` afterwards |
+|---|---|---|
+| `Write(./docs/**)` | **denied** | `…/ws/app` |
+| `Write(./docs/**)` with `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` | allowed | `…/ws` |
+| `Write(//…/ws/docs/**)` (absolute) | allowed | `…/ws/app` |
+
+So the CLI resolves `./` rules against the shell's *current* directory, which follows `cd`. Two consequences:
+
+- Every run sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`, so each shell command starts in the run's working directory.
+- `Spec.Args` anchors `./` rules to the run's working directory, as `//abs/...`. This holds even if the variable's behaviour changes.
