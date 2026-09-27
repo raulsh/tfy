@@ -1,0 +1,15 @@
+# Write the release notes for {{.Label}}: {{.Title}}
+
+The change below has been merged. Write release notes for the people who use the product, not for its developers: what changed for them, in plain words, in two to five sentences or bullets. Mention anything they have to do. No file names, no internal jargon.
+
+What was needed: {{.Summary}}
+{{if .Reporters}}
+It came from feedback in Slack by {{range $i, $r := .Reporters}}{{if $i}}, {{end}}{{$r}}{{end}}; you may thank them.
+{{end}}
+Merged pull requests:
+{{range .PRs}}- {{.}}
+{{end}}{{if .Commits}}
+Commits:
+{{.Commits}}
+{{end}}
+Reply with the markdown only, starting with a level-2 heading.

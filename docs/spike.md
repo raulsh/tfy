@@ -1,0 +1,42 @@
+# M0 spike — Claude Code CLI behaviour (2.1.283)
+
+Run on 2026-09-27 against a local sandbox: a unit-style workspace with two git repos, plus a local bare `origin` so any push that slipped through stayed harmless. The model was `sonnet` (claude-sonnet-5) at `--effort low`. Auth was a subscription (`apiKeySource: "none"`). Sanitized stream fixtures are in `internal/claude/testdata/`.
+
+## Answers to the plan's open questions
+
+| # | Question | Answer | Consequence |
+|---|---|---|---|
+| 1 | Does `--setting-sources ""` skip CLAUDE.md? | **Yes.** The canary in `CLAUDE.md` came back UNKNOWN with `""` and was found with `project` (`q1-*`). | Keep `""` and inject each repo's `CLAUDE.md`/`AGENTS.md` into `--append-system-prompt`, labeled as repository instructions. When the file isn't injected and Claude reads it later, it may flag it as prompt injection (seen in the auto-mode run). |
+| 2 | Do `--settings` deny rules and hooks apply with empty setting sources? Do path-scoped allow rules work? | **Yes to all.** Hooks fire and deny rules apply. `Write(./docs/**)` in `dontAsk` allowed `docs/note.md` and denied `repo-b/note.md` (`q2-edit`). | Define and plan profiles can write only to `docs/`. |
+| 2b | Are deny rules enough to stop pushes? | **No.** `Bash(git push *)` blocked `git push origin main`, but `git -C . push origin main` **ran** (`q2-denyonly`). | The guard hook is the primary control; deny rules are only a second layer. |
+| 3 | Does the guard see `git -C x push`, `sh -c "git push"`, and `Monitor`? | **Yes.** With matcher `Bash\|Monitor`, the hook received all of them; `tool_input.command` holds the raw string (`q2-deny`). | The guard must parse `-C`, `sh -c`, env prefixes and compound commands itself. |
+| 3b | What happens if the guard can't start? | **It fails open.** A missing binary gives `hook_response.exit_code: 127, outcome: "error"`, and the tool call **still ran** (`q9-missinghook`). | The runner aborts a run on any PreToolUse `hook_response` whose `exit_code` isn't 0 or 2. The guard binary lives at a stable path (`~/.thefactory/bin`). |
+| 4 | `autoMode.environment` with `$defaults`, and the init field for the permission mode | The settings containing `["$defaults", "Trusted repo: …"]` were accepted, since hooks still fired. The init field is **`permissionMode`** (`"auto"`). | The runner asserts that `init.permissionMode` equals the requested mode. |
+| 4b | Does auto mode work across sibling repos from a parent cwd that isn't a repo? | **Yes, in both variants.** Claude edited and committed in both repos with or without the environment entry (`q4-auto-*`). The classifier didn't block anything. | Keep the unit folder as the cwd and keep the trust entry (cheap insurance). |
+| 5 | Does `--json-schema` work with `--tools ""` and with other tools? | **Yes.** It adds a `StructuredOutput` tool. The result carries **`structured_output`** (an object), and `result` holds the same JSON as text (`q5-*`). | Read `structured_output`; fall back to parsing `result`. |
+| 6 | Is `total_cost_usd` cumulative across `--resume`? | **Yes, even with `--fork-session`.** It went $0.0035 → $0.0049 → $0.0064 along the chain, and `modelUsage` tokens accumulate too (`q6-*`). | `runs.cost_usd` = reported total − the parent run's reported total. |
+| 7 | Does resume require the same cwd? | **No.** `--resume <id>` from another cwd found the session. Transcripts live at `~/.claude/projects/<cwd-slug>/<sid>.jsonl`, and `--session-id` is honored. | A fixed workspace is kept anyway, for auto mode's trust scope and the doc paths. |
+| 8 | Prompt on stdin, and behaviour on SIGINT and SIGTERM | Stdin works. **SIGINT** gives exit 0 plus a `result` event with `subtype: "error_during_execution"`. **SIGTERM** gives exit 143 (`q8-*`). | Cancel sends SIGINT first. A cancelled run is identified by our own cancel flag, not by the exit code. |
+
+## Other findings that shape the implementation
+
+- **Tool list:** 2.1.283 has no `Glob`, `Grep` or `TodoWrite` tools. By default it exposes `CronCreate`, `RemoteTrigger`, `PushNotification`, `ScheduleWakeup`, `SendMessage`, `Workflow`, `EnterWorktree`, `DesignSync`, `ShareOnboardingGuide` and others. Every run passes an explicit `--tools` list.
+- **Read-only commands in dontAsk:** `ls`, `rg`, `cat` and `find` (without `-exec`) are auto-allowed with only `Read` in the allow list, while `touch` and `git -C … log` are denied (`q5-ro`). Plan and review runs explore with those commands, and the orchestrator **precomputes the review diffs into files** under `docs/`.
+- **`rate_limit_event` arrives on every run** with `status: "allowed"` and `unifiedWindows.{five_hour,seven_day}.utilization`/`resetsAt`. Pause only on a status other than `allowed`, and surface the utilization in the UI as quota.
+- **Useful system events:** `hook_started`/`hook_response` (need `--include-hook-events`), `permission_denied` (`decision_reason_type`: mode / rule / subcommandResults), `vcs_state_changed` (`kind`: commit / push; a push during a develop run is an alarm), `task_started`/`task_notification`/`background_tasks_changed`, and `thinking_tokens`.
+- **Background tasks:** after `result`, the CLI lingers about 6s, kills its background tasks and exits (`q9-linger`). The runner adds a post-result grace timer (30s), then cancels.
+- **Standalone long `sleep`s are blocked** by Claude Code itself, which suggests `run_in_background`.
+- **`--disable-slash-commands`** removes the built-in skills (deep-research, design, …) from the prompt; use it for every run.
+- **Commit trailers:** in auto mode Claude may add a `Co-Authored-By: Claude …` trailer to its commits on its own.
+- **Result fields:** `subtype`, `is_error`, `num_turns`, `total_cost_usd`, `usage`, `modelUsage`, `permission_denials[]`, `terminal_reason`, `stop_reason`, `api_error_status`, `session_id`, `duration_ms`, and `structured_output` when a schema is set.
+
+## End-to-end check (M0 exit)
+
+`thefactory dev claude --profile develop --trust repo-a,repo-b` ran against a unit-style workspace (a parent folder that is not a repo, two checkouts with **no remotes**), with the Go guard (`thefactory hook-guard`) wired in through generated settings:
+
+- The session started in `permissionMode: "auto"`.
+- Claude committed in both repos without being prompted.
+- `git -C repo-a push <bare-repo-path> HEAD:main` was blocked by the guard (exit 2, our message fed back to Claude), and the bare repo was unchanged.
+- The run succeeded: 6 turns, $0.08 on sonnet at low effort.
+
+Found along the way: **the Bash tool's working directory persists between calls**. After a `cd repo-a`, a later `cd repo-b` failed. Prompts tell Claude to use `git -C <repo>` and paths relative to the workspace root.

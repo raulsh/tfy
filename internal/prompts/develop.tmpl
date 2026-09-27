@@ -1,0 +1,33 @@
+{{if .Findings -}}
+# Address the review of {{.Label}}: {{.Title}}
+
+A reviewer compared your changes with docs/spec.md and asked for changes:
+
+<review-findings>
+{{trim .Findings}}
+</review-findings>
+
+Address every finding in the same checkouts and on the same branch ({{.Branch}}), run the relevant tests again, and commit. The rules from before still apply: commit locally, never push.
+{{- else -}}
+# Implement {{.Label}}: {{.Title}}
+
+The approved specification is docs/spec.md and the requirement behind it is docs/requirement.md. Read both before changing anything.
+
+Work in these checkouts, each already on branch {{.Branch}}:
+{{range .Targets}}- {{.Dir}}/ ({{.FullName}}). The latest {{.DefaultBranch}} is available locally as base/{{.DefaultBranch}}.
+{{end}}
+Acceptance criteria:
+{{range .Criteria}}- {{.ID}}: {{.Text}}
+{{end}}
+{{if .NewDependencies}}Dependencies you may add: {{range $i, $d := .NewDependencies}}{{if $i}}, {{end}}{{$d}}{{end}}.
+{{end}}
+Rules:
+- Implement what the spec asks. If part of it is wrong or impossible, do the closest correct thing and explain why in your final summary.
+- Follow each repository's own conventions and instructions. Add or update tests, run the relevant test suites and linters, and fix what you break.
+- Only install dependencies the spec lists, or ones already declared in the repository's manifests.
+- Commit your work in each repository with clear messages. Do not push, add remotes, or open pull requests: thefactory publishes the branches and opens the pull requests when you are done.
+- The shell's working directory persists between commands. Use `git -C <dir> …` and paths relative to the workspace root.
+- If the base branch has moved and your work conflicts with it, merge base/<branch> into your branch. Never rebase.
+{{- end}}
+
+Finish with the structured output: a summary of what you changed and why, and for each repository whether it changed, whether tests ran, and whether they passed.

@@ -1,0 +1,290 @@
+// Package gh wraps the GitHub CLI, which already holds the user's GitHub
+// credentials.
+package gh
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Client runs gh.
+type Client struct {
+	Bin string
+}
+
+// Error carries gh's stderr.
+type Error struct {
+	Args   []string
+	Stderr string
+	Err    error
+}
+
+func (e *Error) Error() string {
+	msg := strings.TrimSpace(e.Stderr)
+	if msg == "" {
+		msg = e.Err.Error()
+	}
+	return fmt.Sprintf("gh %s: %s", strings.Join(e.Args[:min(len(e.Args), 3)], " "), msg)
+}
+
+func (e *Error) Unwrap() error { return e.Err }
+
+func (c *Client) bin() string {
+	if c.Bin != "" {
+		return c.Bin
+	}
+	return "gh"
+}
+
+func (c *Client) run(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, c.bin(), args...)
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1", "GIT_TERMINAL_PROMPT=0")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, &Error{Args: args, Stderr: stderr.String(), Err: err}
+	}
+	return stdout.Bytes(), nil
+}
+
+func (c *Client) runJSON(ctx context.Context, v any, args ...string) error {
+	out, err := c.run(ctx, args...)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(out, v); err != nil {
+		return fmt.Errorf("gh %s: decode: %w", args[0], err)
+	}
+	return nil
+}
+
+// User returns the authenticated login.
+func (c *Client) User(ctx context.Context) (string, error) {
+	out, err := c.run(ctx, "api", "user", "--jq", ".login")
+	return strings.TrimSpace(string(out)), err
+}
+
+// Orgs lists the organizations the user belongs to.
+func (c *Client) Orgs(ctx context.Context) ([]string, error) {
+	out, err := c.run(ctx, "api", "user/orgs", "--paginate", "--jq", ".[].login")
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(string(out)), nil
+}
+
+// Repo describes a repository.
+type Repo struct {
+	NameWithOwner    string `json:"nameWithOwner"`
+	Description      string `json:"description"`
+	URL              string `json:"url"`
+	SSHURL           string `json:"sshUrl"`
+	IsPrivate        bool   `json:"isPrivate"`
+	Visibility       string `json:"visibility"`
+	IsArchived       bool   `json:"isArchived"`
+	DefaultBranchRef struct {
+		Name string `json:"name"`
+	} `json:"defaultBranchRef"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+const repoFields = "nameWithOwner,description,url,sshUrl,isPrivate,visibility,isArchived,defaultBranchRef,updatedAt"
+
+// RepoView describes one repository.
+func (c *Client) RepoView(ctx context.Context, fullName string) (*Repo, error) {
+	var r Repo
+	if err := c.runJSON(ctx, &r, "repo", "view", fullName, "--json", repoFields); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// RepoList lists an owner's repositories ("" for the user's own).
+func (c *Client) RepoList(ctx context.Context, owner string, limit int) ([]Repo, error) {
+	args := []string{"repo", "list"}
+	if owner != "" {
+		args = append(args, owner)
+	}
+	args = append(args, "--no-archived", "--limit", strconv.Itoa(limit), "--json", repoFields)
+	var rs []Repo
+	return rs, c.runJSON(ctx, &rs, args...)
+}
+
+// CloneBare clones a repository without a working tree, with the protocol
+// and credentials gh is configured for.
+func (c *Client) CloneBare(ctx context.Context, fullName, path string) error {
+	_, err := c.run(ctx, "repo", "clone", fullName, path, "--", "--bare", "--quiet")
+	return err
+}
+
+// Check is one entry of statusCheckRollup: a check run or a commit status.
+type Check struct {
+	Typename   string `json:"__typename"`
+	Name       string `json:"name"`
+	Context    string `json:"context"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	State      string `json:"state"`
+	DetailsURL string `json:"detailsUrl"`
+	TargetURL  string `json:"targetUrl"`
+}
+
+// PR is a pull request as `gh pr view --json` reports it.
+type PR struct {
+	Number           int        `json:"number"`
+	URL              string     `json:"url"`
+	Title            string     `json:"title"`
+	State            string     `json:"state"` // OPEN, CLOSED, MERGED
+	IsDraft          bool       `json:"isDraft"`
+	Mergeable        string     `json:"mergeable"`
+	MergeStateStatus string     `json:"mergeStateStatus"`
+	HeadRefName      string     `json:"headRefName"`
+	HeadRefOid       string     `json:"headRefOid"`
+	MergedAt         *time.Time `json:"mergedAt"`
+	MergeCommit      *struct {
+		Oid string `json:"oid"`
+	} `json:"mergeCommit"`
+	StatusCheckRollup []Check `json:"statusCheckRollup"`
+}
+
+// ChecksState summarizes the checks: failure, pending, success, or "" when
+// there are none.
+func (p *PR) ChecksState() string {
+	if len(p.StatusCheckRollup) == 0 {
+		return ""
+	}
+	pending := false
+	for _, c := range p.StatusCheckRollup {
+		v := strings.ToUpper(c.Conclusion)
+		if v == "" {
+			v = strings.ToUpper(c.State)
+		}
+		if v == "" && c.Status != "" && !strings.EqualFold(c.Status, "COMPLETED") {
+			v = "PENDING"
+		}
+		switch v {
+		case "FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE":
+			return "failure"
+		case "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING", "REQUESTED", "":
+			pending = true
+		}
+	}
+	if pending {
+		return "pending"
+	}
+	return "success"
+}
+
+// MergeSHA is the merge commit, if merged.
+func (p *PR) MergeSHA() string {
+	if p.MergeCommit == nil {
+		return ""
+	}
+	return p.MergeCommit.Oid
+}
+
+const prFields = "number,url,title,state,isDraft,mergeable,mergeStateStatus,headRefName,headRefOid,mergedAt,mergeCommit,statusCheckRollup"
+
+// PRView describes one pull request.
+func (c *Client) PRView(ctx context.Context, repo string, number int) (*PR, error) {
+	var p PR
+	if err := c.runJSON(ctx, &p, "pr", "view", strconv.Itoa(number), "--repo", repo, "--json", prFields); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// PRForBranch finds the pull request whose head is branch, in any state.
+func (c *Client) PRForBranch(ctx context.Context, repo, branch string) (*PR, error) {
+	var ps []PR
+	if err := c.runJSON(ctx, &ps, "pr", "list", "--repo", repo, "--head", branch, "--state", "all",
+		"--json", "number,url,title,state,isDraft,headRefName,headRefOid"); err != nil {
+		return nil, err
+	}
+	for i := range ps {
+		if ps[i].HeadRefName == branch {
+			return &ps[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// PRCreate opens a pull request and returns its URL.
+func (c *Client) PRCreate(ctx context.Context, repo, base, head, title, bodyFile string, draft bool) (string, error) {
+	args := []string{"pr", "create", "--repo", repo, "--base", base, "--head", head, "--title", title, "--body-file", bodyFile}
+	if draft {
+		args = append(args, "--draft")
+	}
+	out, err := c.run(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Fields(string(out))
+	if len(lines) == 0 {
+		return "", fmt.Errorf("gh pr create printed no URL")
+	}
+	return lines[len(lines)-1], nil
+}
+
+// PREditBody replaces a pull request's description.
+func (c *Client) PREditBody(ctx context.Context, repo string, number int, bodyFile string) error {
+	_, err := c.run(ctx, "pr", "edit", strconv.Itoa(number), "--repo", repo, "--body-file", bodyFile)
+	return err
+}
+
+// PRReady marks a draft ready for review.
+func (c *Client) PRReady(ctx context.Context, repo string, number int) error {
+	_, err := c.run(ctx, "pr", "ready", strconv.Itoa(number), "--repo", repo)
+	return err
+}
+
+// PRMerge merges a pull request, but only if its head is still matchHead.
+func (c *Client) PRMerge(ctx context.Context, repo string, number int, method, matchHead string, deleteBranch bool) error {
+	args := []string{"pr", "merge", strconv.Itoa(number), "--repo", repo, "--" + method}
+	if matchHead != "" {
+		args = append(args, "--match-head-commit", matchHead)
+	}
+	if deleteBranch {
+		args = append(args, "--delete-branch")
+	}
+	_, err := c.run(ctx, args...)
+	return err
+}
+
+// PRClose closes a pull request.
+func (c *Client) PRClose(ctx context.Context, repo string, number int, deleteBranch bool) error {
+	args := []string{"pr", "close", strconv.Itoa(number), "--repo", repo}
+	if deleteBranch {
+		args = append(args, "--delete-branch")
+	}
+	_, err := c.run(ctx, args...)
+	return err
+}
+
+// PRComment adds a comment to a pull request.
+func (c *Client) PRComment(ctx context.Context, repo string, number int, bodyFile string) error {
+	_, err := c.run(ctx, "pr", "comment", strconv.Itoa(number), "--repo", repo, "--body-file", bodyFile)
+	return err
+}
+
+// WorkflowRun is one Actions run on a commit.
+type WorkflowRun struct {
+	DatabaseID int    `json:"databaseId"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	URL        string `json:"url"`
+}
+
+// RunsForCommit lists the Actions runs on a commit.
+func (c *Client) RunsForCommit(ctx context.Context, repo, sha string) ([]WorkflowRun, error) {
+	var rs []WorkflowRun
+	return rs, c.runJSON(ctx, &rs, "run", "list", "--repo", repo, "--commit", sha, "--json", "databaseId,name,status,conclusion,url")
+}

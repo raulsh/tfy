@@ -1,0 +1,34 @@
+{{if .Revision -}}
+# Revise the specification for {{.Label}}
+
+docs/spec.md holds the current version{{if .EditedByUser}}, which the user has edited since your last run — keep their changes{{end}}. Revise it in place according to this feedback from the user, exploring the code again where needed:
+
+<user-feedback>
+{{trim .Revision}}
+</user-feedback>
+
+Then return the structured output again, reflecting the revised specification.
+{{- else -}}
+# Plan the change and write the specification for {{.Label}}: {{.Title}}
+
+The approved requirement is docs/requirement.md. Read it first.
+
+These repositories are checked out under your working directory, at the tip of their default branch:
+{{range .Repos}}- {{.Dir}}/ is {{.FullName}} ({{.DefaultBranch}})
+{{end}}
+Explore the code to understand how it works today and what has to change. You can read files and run read-only commands (ls, cat, rg, find). You cannot change the repositories at this stage; only docs/ is writable.
+
+Write the specification to docs/spec.md. A developer who has never seen the requirement must be able to implement it from the spec alone.
+
+    # <title>
+    ## Summary
+    ## Target repositories      which repositories must change, and why; leave out the ones that don't
+    ## Changes                  per repository: the files and modules to touch, and what changes in each
+    ## Data and API changes     if any
+    ## New dependencies         every package to add, or "none" — the development run may only install what is listed here
+    ## Test plan                tests to add or update, and how to check the change by hand
+    ## Acceptance criteria      AC-1, AC-2, …: each one verifiable from the diff or by running the tests; together they cover every R-n of the requirement
+    ## Risks and rollout
+
+Then return the structured output: target_repos (directory names from the list above), acceptance_criteria as {id, text} pairs matching the spec, new_dependencies, and a one-paragraph summary.
+{{- end}}

@@ -1,0 +1,226 @@
+:root,
+:root[data-theme="light"] {
+	--tf-bg: #ffffff;
+	--tf-surface: #f5f6f8;
+	--tf-hover: #f9fafb;
+	--tf-fill: #eff2f5;
+	--tf-border: #eaecf0;
+	--tf-text: #101828;
+	--tf-text2: #475467;
+	--tf-text3: #98a2b3;
+	--tf-accent: #1878f6;
+	--tf-selected: #f0f6fe;
+	--tf-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+	--tf-offset-shadow: 3px 3px 0 #101828;
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	--tf-bg: #1d2125;
+	--tf-surface: #16191c;
+	--tf-hover: #22272b;
+	--tf-fill: #2c333a;
+	--tf-border: #38414a;
+	--tf-text: #dee4ea;
+	--tf-text2: #9fadbc;
+	--tf-text3: #738496;
+	--tf-accent: #7fb4fa;
+	--tf-selected: #04316c;
+	--tf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+	--tf-offset-shadow: 3px 3px 0 #000000;
+	color-scheme: dark;
+}
+
+:root {
+	--tf-ok: #319b6a;
+	--tf-warn: #f6c73c;
+	--tf-amber: #f59e0d;
+	--tf-info: #7fb4fa;
+	--tf-error: #ff6161;
+	--tf-neutral: #98a2b3;
+	--tf-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--tf-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	height: 100%;
+	margin: 0;
+}
+
+body {
+	font-family: var(--tf-sans);
+	font-size: 13px;
+	line-height: 1.45;
+	background: var(--tf-bg);
+	color: var(--tf-text);
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: var(--tf-accent);
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+code,
+pre,
+.mono {
+	font-family: var(--tf-mono);
+}
+
+.muted {
+	color: var(--tf-text2);
+}
+
+.faint {
+	color: var(--tf-text3);
+}
+
+/* Dense tables: 32px header, 36px rows, colored left edge per row. */
+.tf-table .ant-table-thead > tr > th {
+	height: 32px;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+	font-weight: 500;
+	font-size: 12px;
+	border-bottom: 1px solid var(--tf-border) !important;
+	white-space: nowrap;
+}
+
+.tf-table .ant-table-tbody > tr > td {
+	height: 36px;
+	padding-top: 6px !important;
+	padding-bottom: 6px !important;
+	border-bottom: 1px solid var(--tf-border) !important;
+}
+
+.tf-table .ant-table-tbody > tr > td:first-child {
+	box-shadow: inset 3px 0 0 var(--edge, transparent);
+}
+
+.tf-table .ant-table-tbody > tr {
+	cursor: pointer;
+}
+
+.tf-table .ant-table-tbody > tr.tf-row-active > td {
+	background: var(--tf-selected) !important;
+}
+
+/* Live pulse for running work. */
+@keyframes tf-pulse {
+	0% {
+		box-shadow: 0 0 0 0 rgba(24, 120, 246, 0.45);
+	}
+	70% {
+		box-shadow: 0 0 0 6px rgba(24, 120, 246, 0);
+	}
+	100% {
+		box-shadow: 0 0 0 0 rgba(24, 120, 246, 0);
+	}
+}
+
+.tf-pulse {
+	animation: tf-pulse 1.6s infinite;
+}
+
+/* Markdown documents. */
+.tf-markdown {
+	font-size: 14px;
+	line-height: 1.6;
+	color: var(--tf-text);
+	max-width: 860px;
+}
+
+.tf-markdown h1 {
+	font-size: 20px;
+	font-weight: 600;
+	margin: 0 0 12px;
+}
+
+.tf-markdown h2 {
+	font-size: 15px;
+	font-weight: 600;
+	margin: 22px 0 8px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--tf-border);
+}
+
+.tf-markdown h3 {
+	font-size: 14px;
+	font-weight: 600;
+	margin: 16px 0 6px;
+}
+
+.tf-markdown p,
+.tf-markdown ul,
+.tf-markdown ol {
+	margin: 0 0 10px;
+}
+
+.tf-markdown ul,
+.tf-markdown ol {
+	padding-left: 22px;
+}
+
+.tf-markdown code {
+	font-size: 12.5px;
+	background: var(--tf-fill);
+	padding: 1px 5px;
+	border-radius: 3px;
+}
+
+.tf-markdown pre {
+	background: var(--tf-fill);
+	padding: 10px 12px;
+	border-radius: 4px;
+	overflow: auto;
+	font-size: 12.5px;
+}
+
+.tf-markdown pre code {
+	background: none;
+	padding: 0;
+}
+
+.tf-markdown table {
+	border-collapse: collapse;
+	margin: 0 0 12px;
+}
+
+.tf-markdown th,
+.tf-markdown td {
+	border: 1px solid var(--tf-border);
+	padding: 4px 8px;
+}
+
+.tf-markdown blockquote {
+	margin: 0 0 10px;
+	padding: 2px 12px;
+	border-left: 3px solid var(--tf-border);
+	color: var(--tf-text2);
+}
+
+/* Scrollbars that stay out of the way. */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--tf-border);
+	border-radius: 6px;
+	border: 2px solid var(--tf-bg);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}

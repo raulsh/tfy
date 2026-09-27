@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["proposal", "attach", "noise"]},
+          "group_key": {"type": "string"},
+          "kind": {"type": "string", "enum": ["feature", "bugfix", "improvement", "chore"]},
+          "title": {"type": "string"},
+          "summary": {"type": "string"},
+          "unit": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "reason": {"type": "string"}
+        },
+        "required": ["id", "verdict", "confidence", "reason"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["items"],
+  "additionalProperties": false
+}

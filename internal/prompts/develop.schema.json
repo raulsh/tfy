@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {"type": "string"},
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repo": {"type": "string"},
+          "changed": {"type": "boolean"},
+          "tests_run": {"type": "boolean"},
+          "tests_passed": {"type": "boolean"},
+          "notes": {"type": "string"}
+        },
+        "required": ["repo", "changed", "tests_run", "tests_passed"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["summary", "repos"],
+  "additionalProperties": false
+}

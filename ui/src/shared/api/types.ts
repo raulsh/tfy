@@ -1,0 +1,329 @@
+// Mirrors internal/api/views.go.
+
+export type Stage = "intake" | "definition" | "planning" | "executing" | "release" | "done" | "rejected";
+
+export type UnitState =
+	| "proposed"
+	| "defining"
+	| "definition_review"
+	| "planning"
+	| "spec_review"
+	| "developing"
+	| "publishing"
+	| "reviewing"
+	| "awaiting_merge"
+	| "merging"
+	| "releasing"
+	| "done"
+	| "rejected";
+
+export type UnitAction =
+	| "accept"
+	| "reject"
+	| "mark-ready"
+	| "approve-spec"
+	| "iterate"
+	| "back"
+	| "retry"
+	| "cancel"
+	| "refresh"
+	| "merge"
+	| "rereview"
+	| "override-approve"
+	| "revise-spec"
+	| "reopen"
+	| "acknowledge"
+	| "mark-released"
+	| "follow-up";
+
+export interface Unit {
+	id: string;
+	seq: number;
+	label: string;
+	project_id: string;
+	project_name?: string;
+	kind: string;
+	title: string;
+	summary: string;
+	description: string;
+	origin: string;
+	state: UnitState;
+	stage: Stage;
+	attention: string;
+	attention_detail: string;
+	review_iteration: number;
+	workspace_path: string;
+	created_by: string;
+	created_at: string;
+	updated_at: string;
+	busy: boolean;
+	actions: UnitAction[];
+}
+
+export interface UnitRepo {
+	repo_id: string;
+	full_name: string;
+	default_branch: string;
+	checkout_path: string;
+	base_sha: string;
+	is_target: boolean;
+	branch: string;
+	head_sha: string;
+	publish_state: string;
+	pr_number: number;
+	pr_url: string;
+	pr_state: string;
+	checks_state: string;
+	merge_sha: string;
+	merged_at: string | null;
+	release_state: "" | "pending" | "success" | "failure" | "none";
+	release_runs: WorkflowRun[];
+}
+
+export interface WorkflowRun {
+	databaseId: number;
+	name: string;
+	status: string;
+	conclusion: string;
+	url: string;
+}
+
+export interface DailyStat {
+	day: string;
+	cost_usd: number;
+	runs: number;
+	done: number;
+}
+
+export interface RecentActivity extends Activity {
+	unit_label: string;
+	unit_title: string;
+}
+
+export interface DocumentMeta {
+	kind: string;
+	version: number;
+	author: string;
+	run_id: string;
+	created_at: string;
+}
+
+export interface UnitDocument extends DocumentMeta {
+	id: string;
+	content: string;
+	meta: Record<string, unknown>;
+}
+
+export interface Activity {
+	id: number;
+	unit_id: string;
+	at: string;
+	actor: string;
+	kind: string;
+	message: string;
+	data: Record<string, unknown>;
+}
+
+export interface UnitDetail extends Unit {
+	repos: UnitRepo[];
+	documents: Record<string, DocumentMeta>;
+	runs: Run[];
+	activity: Activity[];
+	feedback: Feedback[];
+}
+
+export type FeedbackStatus =
+	| "new"
+	| "triaging"
+	| "proposal"
+	| "attached"
+	| "noise"
+	| "uncertain"
+	| "dismissed"
+	| "inbox";
+
+export interface Triage {
+	verdict?: string;
+	kind?: string;
+	title?: string;
+	summary?: string;
+	unit?: string;
+	confidence?: number;
+	reason?: string;
+}
+
+export interface Feedback {
+	id: string;
+	project_id: string;
+	channel_id: string;
+	channel_name: string;
+	ts: string;
+	thread_ts: string;
+	author: string;
+	text: string;
+	permalink: string;
+	reply_count: number;
+	edited: boolean;
+	posted_at: string;
+	status: FeedbackStatus;
+	triage: Triage;
+	unit_id: string;
+	unit_label?: string;
+	unit_title?: string;
+	unit_state?: string;
+}
+
+export interface SlackSource {
+	id: string;
+	project_id: string;
+	channel_id: string;
+	channel_name: string;
+	auto_triage: boolean;
+	exclude_bots: boolean;
+	poll_interval_s: number;
+	last_polled_at: string | null;
+	last_error: string;
+	created_at: string;
+}
+
+export interface SlackChannel {
+	id: string;
+	name: string;
+	type: string;
+	topic: string;
+	purpose: string;
+}
+
+export type RunStatus =
+	| "queued"
+	| "running"
+	| "succeeded"
+	| "failed"
+	| "cancelled"
+	| "timed_out"
+	| "budget_exceeded"
+	| "rate_limited"
+	| "aborted"
+	| "interrupted";
+
+export interface Run {
+	id: string;
+	unit_id: string;
+	unit_label?: string;
+	unit_title?: string;
+	project_id: string;
+	parent_run_id: string;
+	kind: string;
+	status: RunStatus;
+	reason: string;
+	session_id: string;
+	model: string;
+	effort: string;
+	permission_mode: string;
+	prompt_version: string;
+	cwd: string;
+	cost_usd: number;
+	cost_total_usd: number;
+	input_tokens: number;
+	output_tokens: number;
+	turns: number;
+	denials: number;
+	result: unknown;
+	created_at: string;
+	started_at: string | null;
+	ended_at: string | null;
+	duration_ms: number;
+}
+
+export interface RunEvent {
+	seq: number;
+	at: string;
+	type: string;
+	subtype?: string;
+	tool?: string;
+	summary?: string;
+	payload: Record<string, unknown>;
+}
+
+export interface ProjectSettings {
+	draft_prs: boolean;
+	merge_method: "squash" | "merge" | "rebase";
+	delete_branch: boolean;
+	max_review_iterations: number;
+	post_review_to_github: boolean;
+	auto_accept_proposals: boolean;
+	triage_confidence_min: number;
+}
+
+export interface Repo {
+	id: string;
+	full_name: string;
+	default_branch: string;
+	cloned: boolean;
+	clone_url: string;
+	created_at: string;
+}
+
+export interface Project {
+	id: string;
+	name: string;
+	slug: string;
+	description: string;
+	product_context: string;
+	settings: ProjectSettings;
+	repos: Repo[];
+	created_at: string;
+	updated_at: string;
+}
+
+export interface GitHubRepo {
+	full_name: string;
+	description: string;
+	private: boolean;
+	default_branch: string;
+	updated_at: string;
+}
+
+export interface QuotaWindow {
+	utilization: number;
+	resetsAt: number;
+}
+
+export interface Stats {
+	units_by_stage: Partial<Record<Stage, number>>;
+	units_total: number;
+	needs_attention: number;
+	waiting_on_you: number;
+	live_runs: number;
+	cost_today_usd: number;
+	cost_7d_usd: number;
+	paused_until: string | null;
+	feedback_by_status: Partial<Record<FeedbackStatus, number>>;
+	slack_enabled: boolean;
+	quota: { status: string; windows: Record<string, QuotaWindow>; updated_at: string } | null;
+}
+
+export interface Check {
+	name: string;
+	status: "ok" | "warn" | "fail";
+	detail: string;
+	fix?: string;
+}
+
+export interface StageConfig {
+	model: string;
+	effort: string;
+	budget_usd: number;
+	timeout: string;
+}
+
+export interface ConfigView {
+	port: number;
+	max_concurrent_runs: number;
+	stages: Record<string, StageConfig>;
+	pr_poll_interval: string;
+	slack_poll_interval: string;
+	data_dir: string;
+	config_file: string;
+	version: string;
+}

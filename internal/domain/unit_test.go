@@ -1,0 +1,83 @@
+package domain
+
+import "testing"
+
+func TestHappyPathIsLegal(t *testing.T) {
+	path := []State{
+		StateProposed, StateDefining, StateDefinitionReview, StatePlanning, StateSpecReview,
+		StateDeveloping, StatePublishing, StateReviewing, StateDeveloping, StatePublishing,
+		StateReviewing, StateAwaitingMerge, StateMerging, StateReleasing, StateDone,
+	}
+	for i := 1; i < len(path); i++ {
+		if !CanTransition(path[i-1], path[i]) {
+			t.Errorf("%s → %s should be legal", path[i-1], path[i])
+		}
+	}
+}
+
+func TestIllegalMoves(t *testing.T) {
+	illegal := [][2]State{
+		{StateProposed, StateDeveloping}, // no skipping definition
+		{StateDefinitionReview, StateDeveloping},
+		{StateSpecReview, StatePublishing},
+		{StateDone, StateRejected}, // terminal
+		{StateDone, StateDefining},
+		{StateReleasing, StateDeveloping},
+	}
+	for _, m := range illegal {
+		if CanTransition(m[0], m[1]) {
+			t.Errorf("%s → %s should be refused", m[0], m[1])
+		}
+	}
+}
+
+func TestRejectFromAnywhereLive(t *testing.T) {
+	for s := range transitions {
+		if s.Terminal() {
+			continue
+		}
+		if !CanTransition(s, StateRejected) {
+			t.Errorf("cannot reject from %s", s)
+		}
+	}
+}
+
+func TestEveryStateHasAStage(t *testing.T) {
+	states := []State{StateProposed, StateDefining, StateDefinitionReview, StatePlanning, StateSpecReview,
+		StateDeveloping, StatePublishing, StateReviewing, StateAwaitingMerge, StateMerging, StateReleasing,
+		StateDone, StateRejected}
+	for _, s := range states {
+		if s.Stage() == "" {
+			t.Errorf("%s has no stage", s)
+		}
+	}
+}
+
+func TestBranchName(t *testing.T) {
+	got := BranchName(42, "Fix: /health returns 500 when the DB is down!")
+	if got != "factory/u42-fix-health-returns-500-when-the-db-is" {
+		t.Errorf("got %q", got)
+	}
+	if BranchName(1, "¡¿!") != "factory/u1-unit" {
+		t.Error("empty slugs fall back to 'unit'")
+	}
+}
+
+func TestParseKind(t *testing.T) {
+	if k, _ := ParseKind(""); k != KindFeature {
+		t.Error("default kind is feature")
+	}
+	if k, _ := ParseKind(" BugFix "); k != KindBugfix {
+		t.Error("kinds are case-insensitive")
+	}
+	if _, err := ParseKind("epic"); err == nil {
+		t.Error("unknown kinds are rejected")
+	}
+}
+
+func TestProjectSettingsDefaults(t *testing.T) {
+	s := ParseProjectSettings(`{"merge_method":"yolo","draft_prs":true}`)
+	if s.MergeMethod != "squash" || !s.DraftPRs || s.MaxReviewIterations != 2 {
+		t.Errorf("settings = %+v", s)
+	}
+}

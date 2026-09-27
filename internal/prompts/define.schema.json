@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {"type": "string", "maxLength": 100},
+    "kind": {"type": "string", "enum": ["feature", "bugfix", "improvement", "chore"]},
+    "summary": {"type": "string"},
+    "open_questions": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["title", "kind", "summary", "open_questions"],
+  "additionalProperties": false
+}
