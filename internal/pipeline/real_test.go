@@ -16,8 +16,8 @@ import (
 	"github.com/raulsh/tfy/internal/store/db"
 )
 
-// TestRealClaude drives one unit through define, plan, develop, publish and
-// review with the real Claude Code CLI (sonnet, low effort) against the
+// TestRealClaude drives one unit through define, plan, develop, publish,
+// review, merge, release and its retrospective with the real Claude Code CLI (sonnet, low effort) against the
 // local fake GitHub. It spends a little money and never touches GitHub, so
 // it only runs with TFY_REAL_CLAUDE=1:
 //
@@ -89,6 +89,15 @@ func TestRealClaude(t *testing.T) {
 	if !strings.Contains(opened.Title, ": ") || opened.Title == u.Title || !strings.Contains(opened.Body, "<!-- tfy:U-1 -->") {
 		t.Errorf("the pull request must carry Claude's conventional title and description: %q", opened.Title)
 	}
+	// Merged: with no CI on the fake GitHub the unit is done at once, and
+	// its retrospective runs.
+	if _, err := h.p.Act(ctx, u.ID, ActionMerge, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	u = wait(domain.StateDone)
+	retro := h.waitDocFor(u.ID, DocRetrospective, 1, 10*time.Minute)
+	t.Logf("retrospective:\n%s\n%s", retro.Content, retro.Meta)
+
 	hooks, _ := os.ReadFile(hookLog)
 	if !strings.Contains(string(hooks), ur.CheckoutPath+"|"+ur.CheckoutPath) {
 		t.Errorf("the repository's hook must run from its checkout, got:\n%s", hooks)

@@ -274,7 +274,12 @@ func TestNoRetrospectiveWhenLearningIsOff(t *testing.T) {
 
 func (h *harness) waitDoc(unitID, kind string, version int64) db.Document {
 	h.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	return h.waitDocFor(unitID, kind, version, 20*time.Second)
+}
+
+func (h *harness) waitDocFor(unitID, kind string, version int64, limit time.Duration) db.Document {
+	h.t.Helper()
+	deadline := time.Now().Add(limit)
 	for {
 		d, err := h.st.Q.LatestDocument(context.Background(), db.LatestDocumentParams{UnitID: unitID, Kind: kind})
 		if err == nil && d.Version >= version {
