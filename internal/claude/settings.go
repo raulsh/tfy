@@ -18,6 +18,14 @@ type Settings struct {
 	Hooks           map[string][]HookMatcher `json:"hooks,omitempty"`
 	Permissions     *Permissions             `json:"permissions,omitempty"`
 	AutoMode        *AutoMode                `json:"autoMode,omitempty"`
+	Attribution     *Attribution             `json:"attribution,omitempty"`
+}
+
+// Attribution is the text Claude Code adds to commits and pull requests.
+// Empty strings add nothing (no Co-Authored-By trailer).
+type Attribution struct {
+	Commit string `json:"commit"`
+	PR     string `json:"pr"`
 }
 
 // HookMatcher binds hooks to the tools whose name matches Matcher.

@@ -1,8 +1,11 @@
 package claude
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/raulsh/thefactory/internal/guard"
 )
 
 // isGuarded reports whether a tool runs shell commands and so must go through
@@ -26,6 +29,10 @@ type monitor struct {
 	toolNames     map[string]string // tool_use id → tool name
 	hookResponses map[string]int    // tool → PreToolUse hook responses
 	executed      map[string]int    // tool → calls that ran (non-error results)
+	// commands are the shell commands (by tool_use id) that ran since the
+	// last push report, to check the CLI's report against. Denied or failed
+	// calls are dropped: they pushed nothing.
+	commands map[string]string
 }
 
 func newMonitor(spec *Spec) *monitor {
@@ -34,6 +41,7 @@ func newMonitor(spec *Spec) *monitor {
 		toolNames:     map[string]string{},
 		hookResponses: map[string]int{},
 		executed:      map[string]int{},
+		commands:      map[string]string{},
 	}
 }
 
@@ -47,15 +55,28 @@ func (m *monitor) observe(ev Event) string {
 			for _, b := range msg.Content {
 				if b.Type == "tool_use" && b.ID != "" {
 					m.toolNames[b.ID] = b.Name
+					if isGuarded(b.Name) {
+						var in struct {
+							Command string `json:"command"`
+						}
+						if json.Unmarshal(b.Input, &in) == nil && in.Command != "" {
+							m.commands[b.ID] = in.Command
+						}
+					}
 				}
 			}
 		}
 	case TypeUser:
-		if !m.spec.RequireGuard {
-			return ""
-		}
 		msg, ok := ev.Message()
 		if !ok {
+			return ""
+		}
+		for _, b := range msg.Content {
+			if b.Type == "tool_result" && b.IsError {
+				delete(m.commands, b.ToolUseID)
+			}
+		}
+		if !m.spec.RequireGuard {
 			return ""
 		}
 		for _, b := range msg.Content {
@@ -127,8 +148,22 @@ func (m *monitor) observeSystem(ev Event) string {
 			return fmt.Sprintf("more than %d permission denials", m.spec.MaxDenials)
 		}
 	case SubVCSStateChanged:
-		if v, ok := ev.VCSStateChanged(); ok && v.Kind == "push" && m.spec.ForbidPush {
+		v, ok := ev.VCSStateChanged()
+		if !ok || v.Kind != "push" || !m.spec.ForbidPush {
+			return ""
+		}
+		// The CLI spots pushes in the command text, so "git push" written
+		// into a file or echoed also counts. Abort only when the shell
+		// parser finds a real push among the commands that just ran.
+		cmds := m.commands
+		m.commands = map[string]string{}
+		if len(cmds) == 0 {
 			return "the agent pushed to a remote (in " + v.Cwd + ")"
+		}
+		for _, c := range cmds {
+			if !guard.CheckCommand(c).Allow {
+				return "the agent pushed to a remote (in " + v.Cwd + ")"
+			}
 		}
 	}
 	return ""

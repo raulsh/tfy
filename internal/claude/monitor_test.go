@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,34 @@ func TestMonitor(t *testing.T) {
 				t.Fatalf("abort = %q, want it to mention %q", got, c.abort)
 			}
 		})
+	}
+}
+
+// Seen for real: the agent wrote push instructions for a person into a
+// file; the CLI reported a push from the text alone.
+func TestPushReportCheckedAgainstCommands(t *testing.T) {
+	toolUse := func(id, cmd string) Event {
+		raw, _ := json.Marshal(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant",
+			"content": []any{map[string]any{"type": "tool_use", "id": id, "name": "Bash", "input": map[string]string{"command": cmd}}}}})
+		return ParseLine(1, raw)
+	}
+	pushed := ParseLine(2, []byte(`{"type":"system","subtype":"vcs_state_changed","kind":"push","cwd":"/w/app"}`))
+
+	m := newMonitor(&Spec{ForbidPush: true})
+	m.observe(toolUse("t1", "cat > ../docs/push-commands.txt <<EOF\ngit push --force-with-lease origin main\nEOF"))
+	if why := m.observe(pushed); why != "" {
+		t.Fatalf("text about pushing is not a push: %s", why)
+	}
+	// A push the guard denied pushed nothing, and must not taint later
+	// reports.
+	m.observe(toolUse("t2", "git push origin main"))
+	m.observe(ParseLine(3, []byte(`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"blocked by the guard"}]}}`)))
+	m.observe(toolUse("t3", "echo 'then run: git push'"))
+	if why := m.observe(pushed); why != "" {
+		t.Fatalf("a denied push plus text about pushing is not a push: %s", why)
+	}
+	m.observe(toolUse("t4", "git -C app push https://github.com/x/y main"))
+	if why := m.observe(pushed); why == "" {
+		t.Fatal("a real push must abort")
 	}
 }

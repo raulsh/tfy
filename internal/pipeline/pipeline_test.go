@@ -1166,6 +1166,9 @@ func TestReleaseWithFailingCI(t *testing.T) {
 	if child.ID == "" || child.Kind != "bugfix" || child.Origin != string(domain.OriginFollowUp) {
 		t.Fatalf("follow-up = %+v", child)
 	}
+	// The follow-up starts defining at once; let it finish before the
+	// test's temporary directories go away.
+	h.waitState(child.ID, domain.StateDefinitionReview)
 }
 
 func TestAvailableActionsNeverNull(t *testing.T) {

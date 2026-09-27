@@ -81,7 +81,11 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 	if profile.Guarded {
 		guard := fmt.Sprintf("%q hook-guard --stage %s", p.Paths.GuardBin(), req.Kind)
 		spec.SettingsPath = runDir + "/settings.json"
-		if err := claude.WriteSettings(spec.SettingsPath, claude.GuardSettings(guard, req.Trusted)); err != nil {
+		settings := claude.GuardSettings(guard, req.Trusted)
+		if !p.Config.CommitAttribution {
+			settings.Attribution = &claude.Attribution{}
+		}
+		if err := claude.WriteSettings(spec.SettingsPath, settings); err != nil {
 			return db.Run{}, nil, err
 		}
 	}

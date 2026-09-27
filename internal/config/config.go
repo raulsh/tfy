@@ -32,6 +32,10 @@ type Config struct {
 	GHBin     string `yaml:"gh_bin"`
 	GitBin    string `yaml:"git_bin"`
 	SlkBin    string `yaml:"slk_bin"`
+
+	// CommitAttribution keeps Claude Code's Co-Authored-By trailer on the
+	// commits agents make. Off by default.
+	CommitAttribution bool `yaml:"commit_attribution"`
 }
 
 // Default returns the configuration used when no file exists.

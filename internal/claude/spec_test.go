@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -119,5 +120,14 @@ func TestBuildEnvDropsPublishingCredentials(t *testing.T) {
 	}
 	if slices.Contains(env, "TERM=dumb") {
 		t.Error("Extra must override defaults")
+	}
+}
+
+func TestAttributionSettingsSerializeEmptyStrings(t *testing.T) {
+	s := GuardSettings("guard", nil)
+	s.Attribution = &Attribution{}
+	b, _ := json.Marshal(s)
+	if !strings.Contains(string(b), `"attribution":{"commit":"","pr":""}`) {
+		t.Fatalf("settings = %s", b)
 	}
 }
