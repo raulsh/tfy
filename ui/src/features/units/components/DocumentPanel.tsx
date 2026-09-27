@@ -1,11 +1,12 @@
 import { App, Button, Input, Select, Space, Spin } from "antd";
 import { FileText, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { UnitDetail } from "@/shared/api/types";
+import type { MergeStep, UnitDetail } from "@/shared/api/types";
 import { EmptyState, Markdown, Mono } from "@/shared/components/misc";
 import { Card } from "@/shared/components/OverlayDrawer";
 import { timeAgo } from "@/shared/lib/format";
 import { useDocument, useSaveDocument } from "../hooks";
+import { SpecMergePlan } from "./MergePlanCard";
 
 interface Criterion {
 	id: string;
@@ -53,6 +54,7 @@ export function DocumentPanel({ unit, kind }: { unit: UnitDetail; kind: "require
 		new_dependencies?: string[];
 		open_questions?: string[];
 		summary?: string;
+		merge_plan?: MergeStep[];
 	};
 
 	return (
@@ -151,6 +153,7 @@ export function DocumentPanel({ unit, kind }: { unit: UnitDetail; kind: "require
 								<span className="faint">—</span>
 							)}
 						</Card>
+						<SpecMergePlan plan={meta.merge_plan} />
 						<Card title="New dependencies">
 							{meta.new_dependencies?.length ? (
 								<Space direction="vertical" size={2}>

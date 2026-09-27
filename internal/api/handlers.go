@@ -336,6 +336,7 @@ type UnitDetail struct {
 	Activity  []ActivityView          `json:"activity"`
 	Feedback  []FeedbackView          `json:"feedback"`
 	Issues    []IssueView             `json:"issues"`
+	MergePlan pipeline.MergePlanView  `json:"merge_plan"`
 }
 
 func (s *Server) getUnit(c fiber.Ctx) error {
@@ -386,6 +387,9 @@ func (s *Server) getUnit(c fiber.Ctx) error {
 		d.Activity = append(d.Activity, activityView(a))
 	}
 	if d.Issues, err = s.unitIssueViews(c, u.ID); err != nil {
+		return err
+	}
+	if d.MergePlan, err = s.Pipeline.MergePlan(ctx, u); err != nil {
 		return err
 	}
 	return ok(c, d)

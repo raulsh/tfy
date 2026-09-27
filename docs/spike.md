@@ -89,3 +89,17 @@ So the CLI resolves `./` rules against the shell's *current* directory, which fo
 
 - Every run sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`, so each shell command starts in the run's working directory.
 - `Spec.Args` anchors `./` rules to the run's working directory, as `//abs/...`. This holds even if the variable's behaviour changes.
+
+## Dependencies between a project's repositories (2026-09-27)
+
+Seen for real: on a unit where three Go repositories had to pin a new commit of a fourth, private one, the agent had no way to fetch it, because runs have no credentials.
+- It first tried a `url.<checkout>.insteadOf` rule of its own. The guard refused it.
+- It then wrote a Go program with `golang.org/x/mod/zip` to build the module's zip from the checkout, served that from a file-based `GOPROXY` in `/tmp`, and got a `go.sum` that CI accepted.
+
+That was resourceful, and it should not be needed.
+
+Checked with Go 1.26:
+- `go get github.com/acme/mod@<sha>` resolves a private module through a gitconfig with `[url "file:///path/to/checkout"] insteadOf = https://github.com/acme/mod`, given `GOPRIVATE` and no credentials. The pseudo-version and `go.sum` hashes are the same ones GitHub would serve for that commit.
+- A `pushInsteadOf` pointing at a path that doesn't exist makes pushes through those URLs fail.
+
+So each run in a workspace gets its own gitconfig: the commit identity, `insteadOf` rules from each checkout's GitHub URLs to the checkout, and `pushInsteadOf` to nowhere. Checkouts set `uploadpack.allowReachableSHA1InWant`, so a fetch can name a merge commit behind a branch tip. tfy refreshes the default branch and tags of every checkout before a development round. A merge plan's update rounds can then pin what the step before them merged.

@@ -8,6 +8,22 @@ A reviewer compared your changes with docs/spec.md and asked for changes:
 </review-findings>
 
 Address every finding in the same checkouts and on the same branch ({{.Branch}}), run the relevant tests again, and commit. The rules from before still apply: follow each repository's conventions, commit locally, never push. If the change the pull request describes has moved, update its title and description too.
+{{- else if .Step -}}
+# Merge step {{.Step}} of {{.Steps}} for {{.Label}}: {{.Title}}
+
+The unit's pull requests merge in steps. The steps before this one are merged:
+{{range .Merged}}- {{.}}
+{{end}}
+Before step {{.Step}} can merge, make this change, as the approved merge plan says:
+
+<update>
+{{trim .Update}}
+</update>
+
+Make it in these checkouts, on branch {{.Branch}}:
+{{range .Targets}}- {{.Dir}}/ ({{.FullName}})
+{{end}}
+The rest of the change was reviewed and approved: change nothing else. What was merged is available as a dependency: git fetches this project's repositories from their checkouts in this workspace, which hold the merged commits and their tags, so `go get github.com/<owner>/<repo>@<merged commit>` (then `go mod tidy`), or an npm or pip git dependency, works without credentials. Build and run the relevant tests against the merged code, then commit in each repository following its conventions. Never push.
 {{- else -}}
 # Implement {{.Label}}: {{.Title}}
 
@@ -20,6 +36,9 @@ Acceptance criteria:
 {{range .Criteria}}- {{.ID}}: {{.Text}}
 {{end}}
 {{if .NewDependencies}}Dependencies you may add: {{range $i, $d := .NewDependencies}}{{if $i}}, {{end}}{{$d}}{{end}}.
+{{end}}{{if .Plan}}The pull requests merge in steps, as the spec's merge plan says:
+{{range .Plan}}- {{.}}
+{{end}}Where a repository here depends on another one of this unit that merges in an earlier step, depend on that repository's commit on branch {{.Branch}} for now; after it merges, a later round moves the pin to the merged commit.
 {{end}}{{if .Issues}}The change is for {{range $i, $is := .Issues}}{{if $i}}, {{end}}{{$is.Ref}} ({{$is.Title}}){{end}}; their text is in docs/issues/. tfy adds the references to each pull request itself ("Closes …" or "Refs …"), so don't write closing keywords for them; mention them where the repository's template asks for related issues.
 {{end}}
 Rules:
@@ -29,6 +48,7 @@ Rules:
 - Commit your work in each repository, with messages that follow its conventions. Do not push, add remotes, or open pull requests: tfy publishes the branches and opens the pull requests with the title and description you return.
 - Every shell command starts in the workspace root, so a `cd` lasts for that command only. Use `git -C <dir> …`, or `cd <dir> && …` within one command, and paths relative to the workspace root.
 - If the base branch has moved and your work conflicts with it, merge base/<branch> into your branch. Never rebase.
+- The project's repositories are available as dependencies at any commit their checkouts in this workspace hold, this unit's branches included: git URLs of github.com/<owner>/<repo> for them resolve to these checkouts, so `go get github.com/<owner>/<repo>@<commit>`, or an npm or pip git dependency, works without credentials. Never commit a replace directive, a go.work, or a path to a local checkout.
 {{- end}}
 
 Finish with the structured output: a summary of what you changed and why, and for each repository whether it changed, whether tests ran, and whether they passed. For each repository that changed, also write its pull request:

@@ -110,10 +110,36 @@ func (p *Pipeline) pollUnitPRs(ctx context.Context, u db.Unit) error {
 			return err
 		}
 		return p.enqueue(ctx, JobRelease, u, nil)
+	case withPR > 0 && p.stepMerged(ctx, u):
+		u, err := p.transition(ctx, u, domain.StateReleasing, "github", fmt.Sprintf("merge step %d merged", u.MergeStep+1))
+		if err != nil {
+			return err
+		}
+		return p.enqueue(ctx, JobRelease, u, nil)
 	case len(closed) > 0 && u.Attention != string(domain.AttentionPRClosed):
 		p.flag(ctx, u.ID, domain.AttentionPRClosed, "closed without merging: "+strings.Join(closed, ", "))
 	}
 	return nil
+}
+
+// stepMerged reports whether every pull request of the unit's current merge
+// step, and of the steps before it, is merged: the next step can follow.
+func (p *Pipeline) stepMerged(ctx context.Context, u db.Unit) bool {
+	if u.State != string(domain.StateAwaitingMerge) && u.State != string(domain.StateMerging) {
+		return false
+	}
+	steps, _, err := p.unitSteps(ctx, u)
+	if err != nil || len(steps) < 2 {
+		return false
+	}
+	for _, st := range steps[:int(u.MergeStep)+1] {
+		for _, ur := range st.Repos {
+			if ur.PrNumber > 0 && !merged(ur) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Recover reconciles state left by a previous process. Call once at boot,

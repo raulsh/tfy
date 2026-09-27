@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -85,7 +86,7 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 		spec.SessionID = sid.String()
 	}
 	profile.Apply(spec)
-	spec.Env = claude.BuildEnv(claude.EnvOptions{GitConfigGlobal: p.Paths.GitConfig(), GHConfigDir: p.Paths.GHConfig()})
+	envOpts := claude.EnvOptions{GitConfigGlobal: p.Paths.GitConfig(), GHConfigDir: p.Paths.GHConfig()}
 	spec.GuardMarker = claude.GuardMarker
 	// A unit's runs load conventions the way Claude Code does in a
 	// repository: the workspace is made a Claude Code project first.
@@ -102,7 +103,13 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 			return db.Run{}, nil, fmt.Errorf("write the linked issues: %w", err)
 		}
 		spec.SettingSources = []string{"project"}
+		// The checkouts serve the project's repositories as dependencies.
+		envOpts.GitConfigGlobal = filepath.Join(runDir, "gitconfig")
+		if envOpts.Extra, err = p.writeRunGitConfig(ctx, envOpts.GitConfigGlobal, urs); err != nil {
+			return db.Run{}, nil, fmt.Errorf("write the run's git config: %w", err)
+		}
 	}
+	spec.Env = claude.BuildEnv(envOpts)
 	if profile.Guarded {
 		spec.SettingsPath = runDir + "/settings.json"
 		if err := claude.WriteSettings(spec.SettingsPath, p.runSettings(req, cp, profile)); err != nil {

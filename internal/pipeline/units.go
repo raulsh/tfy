@@ -180,11 +180,10 @@ func AvailableActions(u db.Unit, busy bool) []string {
 	case domain.StateMerging:
 		out = append(out, ActionRefresh)
 	case domain.StateReleasing:
-		if !busy {
-			out = append(out, ActionMarkRelease)
-			if attention == domain.AttentionCIFailed {
-				out = append(out, ActionFollowUp)
-			}
+		// Also while it waits on CI: marking released stops the wait.
+		out = append(out, ActionMarkRelease)
+		if !busy && attention == domain.AttentionCIFailed {
+			out = append(out, ActionFollowUp)
 		}
 	case domain.StateRejected:
 		if !busy {
@@ -239,6 +238,11 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		return u, nil
 
 	case ActionApproveSpec:
+		// An approved spec starts its merge plan over.
+		if err := p.Store.Q.SetUnitMergeStep(ctx, db.SetUnitMergeStepParams{MergeStep: 0, Now: store.Now(), ID: u.ID}); err != nil {
+			return u, err
+		}
+		u.MergeStep = 0
 		if u, err = p.transition(ctx, u, domain.StateDeveloping, actor, "specification approved"); err != nil {
 			return u, err
 		}
@@ -294,6 +298,17 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		return p.reopen(ctx, u, actor)
 
 	case ActionMarkRelease:
+		p.Jobs.CancelUnit(ctx, u.ID)
+		// Before the last step of a merge plan, this goes on to the next
+		// step without waiting any longer.
+		if steps, _, err := p.unitSteps(ctx, u); err == nil && int(u.MergeStep) < len(steps)-1 {
+			p.flag(ctx, u.ID, domain.AttentionNone, "")
+			p.activity(ctx, u.ID, actor, "step", fmt.Sprintf("went on to merge step %d without waiting", u.MergeStep+2), nil)
+			if err := p.advanceStep(ctx, db.Job{}, u, steps); err != nil {
+				return u, err
+			}
+			return p.Store.Q.GetUnit(ctx, u.ID)
+		}
 		if u, err = p.transition(ctx, u, domain.StateDone, actor, "marked released"); err != nil {
 			return u, err
 		}

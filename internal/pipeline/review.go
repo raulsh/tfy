@@ -72,7 +72,11 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 	if err != nil {
 		return err
 	}
-	targets := targetsOf(urs)
+	// A merge step's update is reviewed on its own: the rest was approved.
+	targets, updating, err := p.activeTargets(ctx, u)
+	if err != nil {
+		return err
+	}
 	spec, err := p.Store.Q.LatestDocument(ctx, db.LatestDocumentParams{UnitID: u.ID, Kind: DocSpec})
 	if err != nil {
 		return fmt.Errorf("there is no spec to review against")
@@ -93,6 +97,12 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 	data := prompts.Review{
 		Label: domain.Label(u.Seq), Title: u.Title, Criteria: specMeta.AcceptanceCriteria, Round: int(u.ReviewIteration),
 		TestReport: p.lastTestReport(ctx, u),
+	}
+	if updating {
+		steps := resolveSteps(specMeta.MergePlan, targetsOf(urs))
+		st := currentStep(u, steps)
+		data.Step, data.Steps, data.Update = st.Index+1, len(steps), st.Update
+		data.Merged = p.mergedSoFar(ctx, steps, st.Index)
 	}
 	reviewed := map[string]string{}
 	for _, ur := range targets {
@@ -191,7 +201,11 @@ func (p *Pipeline) sendBack(ctx context.Context, u db.Unit, meta ReviewMeta, act
 	if err != nil {
 		return err
 	}
-	return p.enqueue(ctx, JobDevelop, u, developPayload{Findings: findingsBrief(meta)})
+	payload := developPayload{Findings: findingsBrief(meta)}
+	if u.MergeStep > 0 {
+		payload.Step = int(u.MergeStep) + 1 // the fix stays within the step's update
+	}
+	return p.enqueue(ctx, JobDevelop, u, payload)
 }
 
 // followRemoteBranch brings the checkout up to the pull request's head on

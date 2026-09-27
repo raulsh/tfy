@@ -30,49 +30,35 @@ const (
 	releaseAttempts = 120
 )
 
-// release writes the release notes, then follows CI on every merge commit:
-// green everywhere finishes the unit, red asks for a follow-up.
+// release follows a merged step. Before the last step of a merge plan, it
+// waits for what the next step needs and moves on to it. After the last,
+// it writes the release notes and follows CI on every merge commit: green
+// everywhere finishes the unit, red asks for a follow-up.
 func (p *Pipeline) release(ctx context.Context, job db.Job, u db.Unit) error {
-	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
+	steps, urs, err := p.unitSteps(ctx, u)
 	if err != nil {
 		return err
 	}
-	var merged []db.ListUnitReposRow
+	if int(u.MergeStep) < len(steps)-1 {
+		return p.releaseStep(ctx, job, u, steps)
+	}
+	var mergedRepos []db.ListUnitReposRow
 	for _, ur := range targetsOf(urs) {
 		if ur.PrState == "merged" && ur.MergeSha != "" {
-			merged = append(merged, ur)
+			mergedRepos = append(mergedRepos, ur)
 		}
 	}
 	if _, err := p.Store.Q.LatestDocument(ctx, db.LatestDocumentParams{UnitID: u.ID, Kind: DocReleaseNotes}); store.IsNotFound(err) {
-		if err := p.writeReleaseNotes(ctx, u, merged); err != nil {
+		if err := p.writeReleaseNotes(ctx, u, mergedRepos); err != nil {
 			// Notes are nice to have; CI tracking goes on without them.
 			p.Log.Warn("release notes", "unit", domain.Label(u.Seq), "error", err)
 		}
 	}
 
-	pending, failed := false, []string{}
-	for _, ur := range merged {
-		runs, err := p.GH.RunsForCommit(ctx, ur.FullName, ur.MergeSha)
-		if err != nil {
-			return err
-		}
-		state := releaseState(runs)
-		raw, _ := json.Marshal(runs)
-		if err := p.Store.Q.SetUnitRepoRelease(ctx, db.SetUnitRepoReleaseParams{ReleaseState: state, ReleaseRuns: string(raw), Now: store.Now(), UnitID: u.ID, RepoID: ur.RepoID}); err != nil {
-			return err
-		}
-		switch state {
-		case ReleasePending:
-			pending = true
-		case ReleaseFailure:
-			for _, r := range runs {
-				if failedConclusion(r.Conclusion) {
-					failed = append(failed, fmt.Sprintf("%s: %s", ur.FullName, r.Name))
-				}
-			}
-		}
+	pending, failed, err := p.trackCI(ctx, u, mergedRepos)
+	if err != nil {
+		return err
 	}
-	p.changed("unit", u.ID)
 	if len(failed) > 0 {
 		p.flag(ctx, u.ID, domain.AttentionCIFailed, "CI failed on the merged code — "+strings.Join(failed, "; "))
 		return &stopError{fmt.Errorf("CI failed")}
@@ -89,6 +75,38 @@ func (p *Pipeline) release(ctx context.Context, job db.Job, u db.Unit) error {
 	}
 	p.afterDone(ctx, u)
 	return nil
+}
+
+// trackCI records CI on the merge commits of repos, and reports whether any
+// is still running and which runs failed.
+func (p *Pipeline) trackCI(ctx context.Context, u db.Unit, repos []db.ListUnitReposRow) (bool, []string, error) {
+	pending, failed := false, []string{}
+	for _, ur := range repos {
+		if ur.MergeSha == "" {
+			continue
+		}
+		runs, err := p.GH.RunsForCommit(ctx, ur.FullName, ur.MergeSha)
+		if err != nil {
+			return false, nil, err
+		}
+		state := releaseState(runs)
+		raw, _ := json.Marshal(runs)
+		if err := p.Store.Q.SetUnitRepoRelease(ctx, db.SetUnitRepoReleaseParams{ReleaseState: state, ReleaseRuns: string(raw), Now: store.Now(), UnitID: u.ID, RepoID: ur.RepoID}); err != nil {
+			return false, nil, err
+		}
+		switch state {
+		case ReleasePending:
+			pending = true
+		case ReleaseFailure:
+			for _, r := range runs {
+				if failedConclusion(r.Conclusion) {
+					failed = append(failed, fmt.Sprintf("%s: %s", ur.FullName, r.Name))
+				}
+			}
+		}
+	}
+	p.changed("unit", u.ID)
+	return pending, failed, nil
 }
 
 func failedConclusion(c string) bool {

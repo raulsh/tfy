@@ -54,6 +54,7 @@ export interface Unit {
 	attention: string;
 	attention_detail: string;
 	review_iteration: number;
+	merge_step: number;
 	workspace_path: string;
 	created_by: string;
 	created_at: string;
@@ -133,6 +134,7 @@ export interface UnitDetail extends Unit {
 	activity: Activity[];
 	feedback: Feedback[];
 	issues: LinkedIssue[];
+	merge_plan: MergePlan;
 }
 
 export type FeedbackStatus =
@@ -409,4 +411,26 @@ export interface IssueOption {
 	labels: string[];
 	updated_at: string;
 	units: string[];
+}
+
+// The order a unit's pull requests merge in, resolved against its targets.
+// Without a merge plan there is a single step.
+export interface MergePlan {
+	current: number;
+	steps: MergeStepView[];
+}
+
+export interface MergeStepView {
+	index: number;
+	repos: string[];
+	wait_for: "merged" | "released" | "tagged";
+	update?: string;
+	state: "merged" | "current" | "pending";
+}
+
+// A merge plan as the plan run proposed it, in the spec's meta.
+export interface MergeStep {
+	repos: string[];
+	wait_for?: string;
+	update?: string;
 }

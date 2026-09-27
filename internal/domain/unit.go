@@ -106,8 +106,10 @@ var transitions = map[State][]State{
 	StateReviewing:        {StateDeveloping, StateAwaitingMerge, StateSpecReview, StateReleasing, StateDone},
 	StateAwaitingMerge:    {StateMerging, StateReviewing, StateDeveloping, StateSpecReview, StateReleasing, StateDone},
 	StateMerging:          {StateReleasing, StateAwaitingMerge, StateDone},
-	StateReleasing:        {StateDone},
-	StateRejected:         {StateProposed, StateDefinitionReview, StateSpecReview},
+	// A unit with a merge plan releases one step at a time: after a step,
+	// the next one gets its update (developing) or is ready to merge.
+	StateReleasing: {StateDone, StateDeveloping, StateAwaitingMerge},
+	StateRejected:  {StateProposed, StateDefinitionReview, StateSpecReview},
 }
 
 // CanTransition reports whether a unit may move from one state to another.

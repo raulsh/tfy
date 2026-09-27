@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,4 +153,158 @@ func TestRealClaude(t *testing.T) {
 	for i := len(acts) - 1; i >= 0; i-- {
 		t.Logf("activity: %s", acts[i].Message)
 	}
+}
+
+// goModule commits a Go module to a repository on the fake GitHub. With a
+// dependency, it pins that module's commit, fetched through a git config
+// that serves the fake GitHub's repositories (as tfy's runs do).
+func (h *harness) goModule(repo string, files map[string]string, dep, depRev string) {
+	h.t.Helper()
+	dir := filepath.Join(h.t.TempDir(), "w")
+	run(h.t, "", "git", "clone", "-q", filepath.Join(h.remotes, repo+".git"), dir)
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+	if dep != "" {
+		gitconfig := filepath.Join(h.t.TempDir(), "gitconfig")
+		rules := fmt.Sprintf("[url %q]\n\tinsteadOf = https://%s\n", "file://"+filepath.Join(h.remotes, strings.TrimPrefix(dep, "github.com/")+".git"), dep)
+		if err := os.WriteFile(gitconfig, []byte(rules), 0o644); err != nil {
+			h.t.Fatal(err)
+		}
+		cmd := exec.Command("go", "get", dep+"@"+depRev)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+gitconfig, "GOPRIVATE=github.com/acme/*", "GOFLAGS=-mod=mod")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			h.t.Fatalf("go get %s: %v\n%s", dep, err, out)
+		}
+	}
+	run(h.t, dir, "git", "add", "-A")
+	run(h.t, dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "feat: start "+repo)
+	run(h.t, dir, "git", "push", "-q", "origin", "HEAD:main")
+}
+
+func goModLine(t *testing.T, dir, module string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.Contains(line, module+" ") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+// TestRealClaudeMergePlan runs a change across two Go modules, one using
+// the other, with the real Claude Code CLI and Go toolchain against the
+// local fake GitHub: the plan must order the merges, development must pin
+// the dependency's unit-branch commit, and after the dependency is squashed
+// into main the update round must pin the merged commit. Opt-in, like
+// TestRealClaude.
+func TestRealClaudeMergePlan(t *testing.T) {
+	if os.Getenv("TFY_REAL_CLAUDE") == "" {
+		t.Skip("set TFY_REAL_CLAUDE=1 to run against the real Claude Code CLI")
+	}
+	bin, err := exec.LookPath("claude")
+	if err != nil {
+		t.Skip("claude is not installed")
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go is not installed")
+	}
+	h := newHarness(t)
+	ctx := context.Background()
+	h.p.Runner.Bin, h.p.Config.ClaudeBin = bin, bin
+	for _, kind := range []string{"define", "plan", "develop", "review", "release", "learn", "issue"} {
+		h.p.Config.Stages[kind] = config.Stage{Model: "sonnet", Effort: "low", Budget: 1, Timeout: 10 * time.Minute}
+	}
+	if out, err := exec.Command("go", "build", "-o", h.p.Paths.GuardBin(), "../../cmd/tfy").CombinedOutput(); err != nil {
+		t.Fatalf("build tfy: %v\n%s", err, out)
+	}
+	h.addRemote("acme/api")
+	h.goModule("acme/api", map[string]string{
+		"go.mod": "module github.com/acme/api\n\ngo 1.22\n",
+		"api.go": "package api\n\n// Name is the service's name.\nconst Name = \"api\"\n",
+	}, "", "")
+	apiMain := remoteHead("acme/api", "main")
+	h.goModule("acme/app", map[string]string{
+		"go.mod":  "module github.com/acme/app\n\ngo 1.22\n",
+		"main.go": "package main\n\nimport (\n\t\"fmt\"\n\n\t\"github.com/acme/api\"\n)\n\nfunc main() { fmt.Println(api.Name) }\n",
+	}, "github.com/acme/api", apiMain)
+	pr := h.project()
+	if _, err := h.p.LinkRepo(ctx, pr.ID, "acme/api"); err != nil {
+		t.Fatal(err)
+	}
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "feature", Title: "Greet from the api",
+		Description: "Add `func Greet(name string) string` to acme/api, returning \"Hello, <name>, from api\". Make acme/app print api.Greet(\"world\") instead of api.Name. acme/app uses acme/api as a Go module pinned in its go.mod; the committed go.mod must end up pinning acme/api's merged commit."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait := func(s domain.State) db.Unit { return h.waitStateFor(u.ID, s, 20*time.Minute) }
+	u = wait(domain.StateDefinitionReview)
+	if _, err := h.p.Act(ctx, u.ID, ActionMarkReady, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	u = wait(domain.StateSpecReview)
+	plan, _ := h.p.MergePlan(ctx, u)
+	t.Logf("merge plan: %+v", plan)
+	if len(plan.Steps) != 2 || plan.Steps[0].Repos[0] != "acme/api" {
+		t.Fatalf("the plan must merge acme/api first, then acme/app: %+v", plan)
+	}
+	if _, err := h.p.Act(ctx, u.ID, ActionApproveSpec, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	u = wait(domain.StateAwaitingMerge)
+	urs, _ := h.st.Q.ListUnitRepos(ctx, u.ID)
+	var appDir, apiBranchHead string
+	for _, ur := range urs {
+		switch ur.FullName {
+		case "acme/app":
+			appDir = ur.CheckoutPath
+		case "acme/api":
+			apiBranchHead = remoteHead("acme/api", ur.Branch)
+		}
+	}
+	first := goModLine(t, appDir, "github.com/acme/api")
+	t.Logf("after development, app requires: %s (api's branch head %s)", first, apiBranchHead[:12])
+	if !strings.Contains(first, apiBranchHead[:12]) {
+		t.Errorf("development should pin api's commit on the unit's branch, got %q", first)
+	}
+
+	if _, err := h.p.Act(ctx, u.ID, ActionMerge, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	u = wait(domain.StateAwaitingMerge)
+	merged := loadPRs("acme/api")[0].MergeCommit.Oid
+	second := goModLine(t, appDir, "github.com/acme/api")
+	t.Logf("after step 1 merged as %s, app requires: %s", merged[:12], second)
+	if u.MergeStep != 1 || !strings.Contains(second, merged[:12]) {
+		t.Errorf("the update round must pin the merged commit %s, got %q (step %d)", merged[:12], second, u.MergeStep)
+	}
+	build := exec.Command("go", "build", "./...")
+	build.Dir = appDir
+	build.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+filepath.Join(h.p.Paths.Root, "agent", "gitconfig"), "GOPROXY=off")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Errorf("app no longer builds with its pinned api: %v\n%s", err, out)
+	}
+
+	if _, err := h.p.Act(ctx, u.ID, ActionMerge, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	u = wait(domain.StateDone)
+	runs, _ := h.st.Q.ListRuns(ctx, db.ListRunsParams{UnitID: u.ID, Lim: 50})
+	total := 0.0
+	for i := len(runs) - 1; i >= 0; i-- {
+		r := runs[i]
+		total += r.CostUsd
+		t.Logf("%-8s %-9s $%.3f %d turns %d denials", r.Kind, r.Status, r.CostUsd, r.Turns, r.Denials)
+		if r.Status != "succeeded" {
+			t.Errorf("%s run %s: %s", r.Kind, r.Status, r.Reason)
+		}
+	}
+	t.Logf("total $%.2f", total)
 }

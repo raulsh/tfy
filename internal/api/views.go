@@ -28,6 +28,7 @@ type UnitView struct {
 	Attention       string    `json:"attention"`
 	AttentionDetail string    `json:"attention_detail"`
 	ReviewIteration int64     `json:"review_iteration"`
+	MergeStep       int64     `json:"merge_step"`
 	WorkspacePath   string    `json:"workspace_path"`
 	CreatedBy       string    `json:"created_by"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -41,7 +42,7 @@ func unitView(u db.Unit, busy bool, actions []string, projectName string) UnitVi
 		ID: u.ID, Seq: u.Seq, Label: domain.Label(u.Seq), ProjectID: u.ProjectID, ProjectName: projectName,
 		ParentUnitID: u.ParentUnitID.String, Kind: u.Kind, Title: u.Title, Summary: u.Summary, Description: u.Description, Origin: u.Origin,
 		State: u.State, Stage: string(domain.State(u.State).Stage()), Attention: u.Attention,
-		AttentionDetail: u.AttentionDetail, ReviewIteration: u.ReviewIteration, WorkspacePath: u.WorkspacePath,
+		AttentionDetail: u.AttentionDetail, ReviewIteration: u.ReviewIteration, MergeStep: u.MergeStep, WorkspacePath: u.WorkspacePath,
 		CreatedBy: u.CreatedBy, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Busy: busy, Actions: actions,
 	}
 }

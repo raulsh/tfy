@@ -158,6 +158,14 @@ type Develop struct {
 	NewDependencies []string
 	Issues          []Issue
 	Findings        string // review findings when iterating
+	// Plan describes the merge plan, when the pull requests merge in steps.
+	Plan []string
+	// Step, from 1, is the merge step whose update this round makes, out
+	// of Steps; Merged says what the steps before it merged.
+	Step   int
+	Steps  int
+	Update string
+	Merged []string
 }
 
 // ReviewDiff is one repository's change under review.
@@ -179,6 +187,12 @@ type Review struct {
 	Round    int // 0 for the first review
 	// TestReport is what the implementer said about its own test runs.
 	TestReport string
+	// Step, from 1, is set when the round reviews a merge step's update,
+	// out of Steps; Merged says what the steps before it merged.
+	Step   int
+	Steps  int
+	Update string
+	Merged []string
 }
 
 // TriageMessage is one Slack message to triage.

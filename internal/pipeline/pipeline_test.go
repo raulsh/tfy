@@ -165,6 +165,12 @@ func fakeClaude() int {
 		_ = os.WriteFile("docs/spec.md", []byte("# Spec\n\n## Acceptance criteria\n- AC-1: returns degraded\n"), 0o644)
 		out = map[string]any{"summary": "Return 200 degraded.", "target_repos": gitDirs(cwd)[:1],
 			"acceptance_criteria": []map[string]string{{"id": "AC-1", "text": "returns degraded"}}, "new_dependencies": []string{}}
+		// $FAKE_CONTROL/plan.json replaces the plan's output.
+		if b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "plan.json")); err == nil {
+			var v any
+			_ = json.Unmarshal(b, &v)
+			out = v
+		}
 	case strings.Contains(schema, "verdict"):
 		verdict := nextVerdict()
 		out = map[string]any{"verdict": verdict, "summary": "Reviewed against the spec.",
@@ -175,9 +181,20 @@ func fakeClaude() int {
 		}
 	case strings.Contains(schema, "tests_passed"):
 		var repos []any
+		listed := map[string]bool{}
+		for _, m := range regexp.MustCompile(`(?m)^- ([\w.-]+)/ \(`).FindAllStringSubmatch(string(prompt), -1) {
+			listed[m[1]] = true
+		}
+		if strings.Contains(string(prompt), "# Merge step") {
+			// What git sees of acme/api through the run's config, and
+			// whether a push through it gets anywhere.
+			lsRemote, _ := exec.Command("git", "ls-remote", "https://github.com/acme/api").CombinedOutput()
+			push := exec.Command("git", "-C", "app", "push", "https://github.com/acme/api", "HEAD:refs/heads/sneaky").Run()
+			_ = os.WriteFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "mirror.txt"), []byte(fmt.Sprintf("%s\npush error: %v\n", lsRemote, push)), 0o644)
+		}
 		for _, d := range gitDirs(cwd) {
 			b, _ := exec.Command("git", "-C", d, "rev-parse", "--abbrev-ref", "HEAD").Output()
-			if !strings.HasPrefix(strings.TrimSpace(string(b)), "tfy/") {
+			if !strings.HasPrefix(strings.TrimSpace(string(b)), "tfy/") || len(listed) > 0 && !listed[d] {
 				continue
 			}
 			repos = append(repos, map[string]any{"repo": d, "changed": true, "tests_run": true, "tests_passed": true,
@@ -440,7 +457,10 @@ func fakeGH() int {
 	case "api user/orgs":
 		fmt.Println("acme")
 	case "repo list":
-		print([]map[string]any{{"nameWithOwner": "acme/app", "description": "The Acme web app", "isPrivate": true, "defaultBranchRef": map[string]string{"name": "main"}}})
+		print([]map[string]any{
+			{"nameWithOwner": "acme/app", "description": "The Acme web app", "isPrivate": true, "defaultBranchRef": map[string]string{"name": "main"}},
+			{"nameWithOwner": "acme/api", "description": "The Acme API", "isPrivate": true, "defaultBranchRef": map[string]string{"name": "main"}},
+		})
 	case "repo view":
 		visibility := "PRIVATE"
 		if b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "visibility")); err == nil {
@@ -550,11 +570,26 @@ func fakeGH() int {
 					fmt.Fprintln(os.Stderr, "head commit does not match")
 					return 1
 				}
+				// Squashed, as GitHub does by default: a new commit on main with
+				// the pull request's tree, so the merged commit differs from
+				// the branch's.
+				bare := filepath.Join(os.Getenv("FAKE_REMOTES"), repo+".git")
+				squash, err := exec.Command("git", "-C", bare, "-c", "user.name=GitHub", "-c", "user.email=noreply@github.com",
+					"commit-tree", remoteHead(repo, prs[i].HeadRefName)+"^{tree}", "-p", "refs/heads/main", "-m", fmt.Sprintf("%s (#%d)", prs[i].Title, prs[i].Number)).Output()
+				head := strings.TrimSpace(string(squash))
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "squash:", err)
+					return 1
+				}
+				if out, err := exec.Command("git", "-C", bare, "update-ref", "refs/heads/main", head).CombinedOutput(); err != nil {
+					fmt.Fprintln(os.Stderr, string(out))
+					return 1
+				}
 				merged := "2026-09-27T12:00:00Z"
 				prs[i].State, prs[i].MergedAt = "MERGED", &merged
 				prs[i].MergeCommit = &struct {
 					Oid string `json:"oid"`
-				}{Oid: "m" + remoteHead(repo, prs[i].HeadRefName)}
+				}{Oid: head}
 			case "ready":
 				prs[i].IsDraft = false
 			case "close":
@@ -658,6 +693,16 @@ func newHarness(t *testing.T) *harness {
 		}
 	})
 	return &harness{t: t, p: p, st: st, remotes: remotes, control: filepath.Join(root, "control"), cancel: cancel}
+}
+
+// addRemote creates another repository on the fake GitHub, with one commit
+// on main.
+func (h *harness) addRemote(repo string) {
+	h.t.Helper()
+	seed := filepath.Join(h.t.TempDir(), "seed")
+	run(h.t, "", "git", "init", "-q", "-b", "main", seed)
+	run(h.t, seed, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	run(h.t, "", "git", "clone", "-q", "--bare", seed, filepath.Join(h.remotes, repo+".git"))
 }
 
 func (h *harness) project() db.Project {

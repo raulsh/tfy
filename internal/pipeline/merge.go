@@ -14,16 +14,17 @@ import (
 	"github.com/raulsh/tfy/internal/store/db"
 )
 
-// merge merges every pull request of the unit, but only after checking all
-// of them: none may have changed since the review, none may conflict. A
-// failure part-way leaves the merged ones merged; retrying merges the rest.
+// merge merges the pull requests of the unit's current merge step — all of
+// them, without a merge plan — but only after checking each: none may have
+// changed since the review, none may conflict. A failure part-way leaves the
+// merged ones merged; retrying merges the rest.
 func (p *Pipeline) merge(ctx context.Context, job db.Job, u db.Unit) error {
 	project, err := p.Store.Q.GetProject(ctx, u.ProjectID)
 	if err != nil {
 		return err
 	}
 	settings := domain.ParseProjectSettings(project.Settings)
-	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
+	steps, _, err := p.unitSteps(ctx, u)
 	if err != nil {
 		return err
 	}
@@ -33,7 +34,7 @@ func (p *Pipeline) merge(ctx context.Context, job db.Job, u db.Unit) error {
 		pr *gh.PR
 	}
 	var todo []pending
-	for _, ur := range targetsOf(urs) {
+	for _, ur := range currentStep(u, steps).Repos {
 		if ur.PrNumber == 0 {
 			continue
 		}

@@ -291,8 +291,20 @@ function waitingText(u: Unit): string {
 			return "Read the requirement. Mark it ready to start planning, edit it, or ask Claude for a revision.";
 		case "spec_review":
 			return "Read the spec. Approve it to start development, edit it, or ask Claude for a revision.";
-		case "releasing":
+		case "releasing": {
+			const plan = "merge_plan" in u ? (u as UnitDetail).merge_plan : undefined;
+			if (plan && plan.current < plan.steps.length - 1) {
+				const next = plan.steps[plan.current + 1];
+				const until =
+					next.wait_for === "released"
+						? "CI is green on its merge commits"
+						: next.wait_for === "tagged"
+							? "a tag contains its merge commits"
+							: "it is merged";
+				return `Step ${plan.current + 1} of ${plan.steps.length} is merged. tfy waits until ${until}, then prepares step ${plan.current + 2}. Continue to go on without waiting.`;
+			}
 			return "Merged. tfy is writing the release notes and following CI on the merge commits.";
+		}
 		case "awaiting_merge":
 			return "The review approved the change. Merge it from here (tfy checks nothing changed since the review), or on GitHub.";
 		default:
@@ -338,12 +350,20 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 		["accept", "mark-ready", "approve-spec", "merge", "reopen"] as UnitAction[]
 	).find(has);
 	const repos = "repos" in unit ? unit.repos : [];
-	const openPRs = repos.filter((r) => r.pr_number && r.pr_state === "open");
+	// With a merge plan, merging covers the current step only.
+	const plan = "merge_plan" in unit ? unit.merge_plan : undefined;
+	const stepped = !!plan && plan.steps.length > 1;
+	const stepRepos = stepped ? plan.steps[plan.current].repos : undefined;
+	const openPRs = repos.filter(
+		(r) => r.pr_number && r.pr_state === "open" && (!stepRepos || stepRepos.includes(r.full_name)),
+	);
+	const stepLabel = stepped ? `step ${plan.current + 1} of ${plan.steps.length}` : "";
+	const hasNextStep = stepped && plan.current < plan.steps.length - 1;
 	const reviewing = unit.state === "reviewing";
 
 	const confirmMerge = () =>
 		modal.confirm({
-			title: "Merge the pull requests?",
+			title: stepped ? `Merge ${stepLabel}?` : "Merge the pull requests?",
 			content: (
 				<div>
 					<p className="muted">
@@ -396,15 +416,24 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 					Revise spec
 				</Button>
 			)}
-			{has("mark-released") && (
-				<Popconfirm
-					title="Mark this unit released?"
-					description="CI is not watched any further."
-					onConfirm={() => run("mark-released")}
-				>
-					<Button size={size}>Mark released</Button>
-				</Popconfirm>
-			)}
+			{has("mark-released") &&
+				(hasNextStep ? (
+					<Popconfirm
+						title={`Go on to step ${plan.current + 2} now?`}
+						description="tfy stops waiting for this step's CI or tag."
+						onConfirm={() => run("mark-released")}
+					>
+						<Button size={size}>Continue to step {plan.current + 2}</Button>
+					</Popconfirm>
+				) : (
+					<Popconfirm
+						title="Mark this unit released?"
+						description="CI is not watched any further."
+						onConfirm={() => run("mark-released")}
+					>
+						<Button size={size}>Mark released</Button>
+					</Popconfirm>
+				))}
 			{has("suggest-conventions") && (
 				<Tooltip title="A retrospective of this unit: it may propose changes to the repositories' CLAUDE.md, rules or hooks, as a new unit">
 					<Button size={size} onClick={() => run("suggest-conventions")} loading={busy("suggest-conventions")}>
@@ -470,7 +499,7 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 						loading={busy(primary)}
 						onClick={() => (primary === "merge" ? confirmMerge() : run(primary))}
 					>
-						{actionLabels[primary]}
+						{primary === "merge" && stepped ? `Merge ${stepLabel}` : actionLabels[primary]}
 					</Button>
 				</Tooltip>
 			)}

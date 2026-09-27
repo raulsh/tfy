@@ -23,6 +23,12 @@ done
 git init -q -b main "$DEMO/seed"
 git -C "$DEMO/seed" -c user.name=demo -c user.email=demo@example.com commit -q --allow-empty -m "init"
 git clone -q --bare "$DEMO/seed" "$DEMO/remotes/acme/app.git"
+# A second repository, for changes that merge in order. To try a merge plan,
+# write the plan run's output to $DEMO/control/plan.json, e.g.
+#   {"summary": "…", "target_repos": ["api", "app"], "acceptance_criteria": [], "new_dependencies": [],
+#    "merge_plan": [{"repos": ["api"], "wait_for": "merged", "update": ""},
+#                   {"repos": ["app"], "wait_for": "merged", "update": "Pin acme/api to the commit step 1 merged."}]}
+git clone -q --bare "$DEMO/seed" "$DEMO/remotes/acme/api.git"
 # Open issues on the fake GitHub, to create units from or link.
 cat > "$DEMO/gh-state/issues_acme_app.json" <<'JSON'
 [{"number": 3, "title": "Checkout crashes on Safari", "state": "OPEN", "url": "https://github.com/acme/app/issues/3",

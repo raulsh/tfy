@@ -24,6 +24,9 @@ type planPayload struct {
 type developPayload struct {
 	Findings string `json:"findings,omitempty"`
 	Retry    bool   `json:"retry,omitempty"`
+	// Step, from 1, is the merge step whose update this round makes: after
+	// the steps before it merged, in that step's repositories only.
+	Step int `json:"step,omitempty"`
 }
 
 // defineMeta is the define run's structured output.
@@ -40,6 +43,9 @@ type SpecMeta struct {
 	TargetRepos        []string            `json:"target_repos"`
 	AcceptanceCriteria []prompts.Criterion `json:"acceptance_criteria"`
 	NewDependencies    []string            `json:"new_dependencies"`
+	// MergePlan orders the merges when the target repositories cannot all
+	// merge at once; empty means they merge together.
+	MergePlan []MergeStep `json:"merge_plan,omitempty"`
 }
 
 func decodePayload[T any](job db.Job) T {
@@ -220,6 +226,18 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 	if err := writeDoc(u, DocSpec, spec.Content); err != nil {
 		return err
 	}
+	steps := resolveSteps(meta.MergePlan, targets)
+	var st step
+	if payload.Step > 0 {
+		// A merge step's update touches that step's open pull requests only.
+		if payload.Step > len(steps) {
+			return fmt.Errorf("the merge plan has no step %d", payload.Step)
+		}
+		st = steps[payload.Step-1]
+		if targets = openRepos(st); len(targets) == 0 {
+			return fmt.Errorf("merge step %d has no open pull request to update", payload.Step)
+		}
+	}
 
 	branch, err := p.unitBranch(ctx, u, targets)
 	if err != nil {
@@ -230,6 +248,9 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 			return err
 		}
 	}
+	// The other checkouts serve as dependencies: bring their default
+	// branches and tags up to date, merged steps included.
+	p.refreshDependencies(ctx, urs, targets)
 
 	data := prompts.Develop{
 		Label:           domain.Label(u.Seq),
@@ -240,12 +261,20 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		NewDependencies: meta.NewDependencies,
 		Issues:          promptIssues(p.unitIssues(ctx, u, false)),
 		Findings:        payload.Findings,
+		Step:            payload.Step,
+		Steps:           len(steps),
+		Update:          st.Update,
+	}
+	if payload.Step > 0 {
+		data.Merged = p.mergedSoFar(ctx, steps, payload.Step-1)
+	} else if len(steps) > 1 {
+		data.Plan = planLines(steps)
 	}
 	req := runRequest{Unit: u, Kind: "develop", Schema: prompts.Schema("develop")}
 	for _, ur := range targets {
 		req.Trusted = append(req.Trusted, dirOf(ur))
 	}
-	if payload.Findings != "" {
+	if payload.Findings != "" || payload.Step > 0 {
 		if prev, err := p.Store.Q.LastSessionRun(ctx, db.LastSessionRunParams{UnitID: store.NullString(u.ID), Kind: "develop"}); err == nil {
 			req.Resume = &prev
 		}
@@ -270,6 +299,46 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		return err
 	}
 	return p.enqueue(ctx, JobPublish, u, nil)
+}
+
+// refreshDependencies updates the base branch and tags of every checkout
+// that is not about to be changed, from GitHub, so a development round can
+// depend on what was merged. Failures only cost freshness.
+func (p *Pipeline) refreshDependencies(ctx context.Context, urs, targets []db.ListUnitReposRow) {
+	for _, ur := range urs {
+		if slices.ContainsFunc(targets, func(t db.ListUnitReposRow) bool { return t.RepoID == ur.RepoID }) || ur.CheckoutPath == "" {
+			continue
+		}
+		repo, err := p.Store.Q.GetRepo(ctx, ur.RepoID)
+		if err == nil {
+			repo, err = p.syncManagedClone(ctx, repo)
+		}
+		if err == nil {
+			err = p.Git.FetchInto(ctx, ur.CheckoutPath, repo.ClonePath, "refs/heads/"+repo.DefaultBranch, "refs/remotes/base/"+repo.DefaultBranch)
+		}
+		if err == nil {
+			err = p.Git.FetchTags(ctx, ur.CheckoutPath, repo.ClonePath)
+		}
+		if err != nil {
+			p.Log.Warn("refresh a dependency checkout", "repo", ur.FullName, "error", err)
+		}
+	}
+}
+
+// planLines describe a merge plan for the development round.
+func planLines(steps []step) []string {
+	var out []string
+	for _, st := range steps {
+		line := fmt.Sprintf("Step %d: %s", st.Index+1, stepNames(st))
+		if st.Index > 0 {
+			line += fmt.Sprintf(", once step %d is %s", st.Index, st.WaitFor)
+		}
+		if st.Update != "" {
+			line += "; then, before it merges: " + st.Update
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // unitBranch is the branch of the unit's change: the one earlier rounds
@@ -299,6 +368,9 @@ func (p *Pipeline) prepareBranch(ctx context.Context, u db.Unit, ur db.ListUnitR
 	}
 	if err := p.Git.FetchInto(ctx, ur.CheckoutPath, repo.ClonePath, "refs/heads/"+repo.DefaultBranch, "refs/remotes/base/"+repo.DefaultBranch); err != nil {
 		return fmt.Errorf("refresh base of %s: %w", repo.FullName, err)
+	}
+	if err := p.Git.FetchTags(ctx, ur.CheckoutPath, repo.ClonePath); err != nil {
+		return fmt.Errorf("refresh the tags of %s: %w", repo.FullName, err)
 	}
 	if err := p.Git.SwitchBranch(ctx, ur.CheckoutPath, branch, "HEAD"); err != nil {
 		return fmt.Errorf("check out %s in %s: %w", branch, repo.FullName, err)

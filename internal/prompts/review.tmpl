@@ -11,6 +11,15 @@ Acceptance criteria to verify:
 {{range .Criteria}}- {{.ID}}: {{.Text}}
 {{end}}
 {{if .Round}}This is review round {{.Round}}; earlier rounds asked for changes, and the implementer has addressed them since.
+{{end}}{{if .Step}}The pull requests merge in steps, and the steps before step {{.Step}} of {{.Steps}} are merged:
+{{range .Merged}}- {{.}}
+{{end}}The rest of the change was approved earlier. This round reviews the update step {{.Step}} needed before it can merge:
+
+<update>
+{{trim .Update}}
+</update>
+
+Check that the diffs above now do it — for a pin, that it points at the merged commit and that nothing else moved — and that the criteria still hold.
 {{end}}
 For every criterion, decide whether it is met, partial, unmet, or not_verifiable, and cite the evidence (files and lines, or tests). Use not_verifiable only when the code cannot tell you; if CI is green and the code implements the criterion, it is met. Then list findings: bugs, missing tests, security problems, changes the spec did not ask for, or anything that would make you block the pull request. Grade each finding:
 

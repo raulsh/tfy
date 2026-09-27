@@ -24,13 +24,17 @@ const (
 // is idempotent: pushing the same commits again is a no-op, and an existing
 // pull request for the branch is reused rather than duplicated.
 func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
-	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
+	targets, updating, err := p.activeTargets(ctx, u)
 	if err != nil {
 		return err
 	}
-	targets := targetsOf(urs)
 	pc, err := p.prContextFor(ctx, u)
 	if err != nil {
+		return err
+	}
+	if updating && p.unchangedSinceReview(ctx, targets) {
+		// The step's update needed no change: what was reviewed stands.
+		_, err := p.transition(ctx, u, domain.StateAwaitingMerge, "system", fmt.Sprintf("merge step %d needed no change; ready to merge", u.MergeStep+1))
 		return err
 	}
 
@@ -85,10 +89,11 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 		p.flag(ctx, u.ID, domain.AttentionNoChanges, "the development run committed nothing in the target repositories")
 		return &stopError{fmt.Errorf("nothing to publish")}
 	}
-	if len(published) > 1 {
-		// Cross-link the pull requests of a multi-repo change.
+	if siblings := p.prSiblings(ctx, u); len(siblings) > 1 {
+		// Cross-link the pull requests of a multi-repo change, merged ones
+		// included.
 		for _, ur := range published {
-			if _, _, err := p.ensurePR(ctx, u, ur, pc, published); err != nil {
+			if _, _, err := p.ensurePR(ctx, u, ur, pc, siblings); err != nil {
 				p.Log.Warn("link sibling pull requests", "unit", u.ID, "repo", ur.FullName, "error", err)
 			}
 		}
@@ -97,6 +102,50 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 		return err
 	}
 	return p.enqueue(ctx, JobReview, u, nil)
+}
+
+// prSiblings are all the unit's pull requests, to link to each other.
+func (p *Pipeline) prSiblings(ctx context.Context, u db.Unit) []db.ListUnitReposRow {
+	urs, _ := p.Store.Q.ListUnitRepos(ctx, u.ID)
+	var out []db.ListUnitReposRow
+	for _, ur := range targetsOf(urs) {
+		if ur.PrUrl != "" {
+			out = append(out, ur)
+		}
+	}
+	return out
+}
+
+// activeTargets are the target repositories a round works on: those whose
+// pull requests are not merged, or, while a merge step's update is under
+// way, that step's open ones. updating tells which.
+func (p *Pipeline) activeTargets(ctx context.Context, u db.Unit) ([]db.ListUnitReposRow, bool, error) {
+	steps, urs, err := p.unitSteps(ctx, u)
+	if err != nil {
+		return nil, false, err
+	}
+	if u.MergeStep > 0 {
+		return openRepos(currentStep(u, steps)), true, nil
+	}
+	var open []db.ListUnitReposRow
+	for _, ur := range targetsOf(urs) {
+		if !merged(ur) {
+			open = append(open, ur)
+		}
+	}
+	return open, false, nil
+}
+
+// unchangedSinceReview reports whether no repository has commits the last
+// review did not see.
+func (p *Pipeline) unchangedSinceReview(ctx context.Context, urs []db.ListUnitReposRow) bool {
+	for _, ur := range urs {
+		head, err := p.Git.RevParse(ctx, ur.CheckoutPath, "HEAD")
+		if dirty, _ := p.Git.Dirty(ctx, ur.CheckoutPath); err != nil || dirty || ur.ReviewedSha == "" || head != ur.ReviewedSha {
+			return false
+		}
+	}
+	return true
 }
 
 // push publishes the checkout's HEAD with the user's credentials: through
@@ -218,8 +267,8 @@ func (p *Pipeline) refreshPullRequests(ctx context.Context, u db.Unit) {
 		return
 	}
 	var siblings []db.ListUnitReposRow
-	if len(open) > 1 {
-		siblings = open
+	if all := p.prSiblings(ctx, u); len(all) > 1 {
+		siblings = all
 	}
 	for _, ur := range open {
 		if _, _, err := p.ensurePR(ctx, u, ur, pc, siblings); err != nil {

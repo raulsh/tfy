@@ -31,7 +31,10 @@ Write the specification to docs/spec.md. A developer who has never seen the requ
     ## New dependencies         every package to add, or "none" — the development run may only install what is listed here
     ## Test plan                tests to add or update, and how to check the change by hand
     ## Acceptance criteria      AC-1, AC-2, …: each one verifiable from the diff or by running the tests; together they cover every R-n of the requirement
+    ## Merge order              only when the pull requests cannot all merge at once; see below
     ## Risks and rollout
 
-Then return the structured output: target_repos (directory names from the list above), acceptance_criteria as {id, text} pairs matching the spec, new_dependencies, and a one-paragraph summary.
+Some changes across repositories cannot merge at once: a shared module must be merged before the repositories that use it can pin its merged commit, or a service must be deployed before the clients that need it. Then give a merge plan: ordered steps, each a set of repositories merged together. For each step after the first, say what it waits for from the steps before it — merged (their pull requests are merged), released (CI, including any deploy, succeeded on their merge commits) or tagged (a tag contains their merge commits, for dependencies consumed by version) — and the update to make in its repositories first, once that is so, if any (for example: "pin github.com/acme/api to the commit step 1 merged; drop any replace"). tfy merges the steps in order, makes each update in a short development round that is reviewed on its own, and asks a person to merge each step. During development, a repository can already depend on another one's commit on the unit's branch: the workspace serves its checkouts as dependencies. Leave merge_plan empty when everything can merge together.
+
+Then return the structured output: target_repos (directory names from the list above), acceptance_criteria as {id, text} pairs matching the spec, new_dependencies, merge_plan (steps of {repos, wait_for, update}, with directory names; empty when not needed), and a one-paragraph summary.
 {{- end}}

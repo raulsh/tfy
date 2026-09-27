@@ -56,10 +56,31 @@ func (g *Git) run(ctx context.Context, dir string, args ...string) (string, erro
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// Fetch updates a bare managed clone's branches from origin.
+// Fetch updates a bare managed clone's branches and tags from origin.
 func (g *Git) Fetch(ctx context.Context, bare string) error {
-	_, err := g.run(ctx, bare, "fetch", "--prune", "--quiet", "origin", "+refs/heads/*:refs/heads/*")
+	_, err := g.run(ctx, bare, "fetch", "--prune", "--quiet", "origin", "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*")
 	return err
+}
+
+// FetchTags copies every tag of another repository (by path or URL).
+func (g *Git) FetchTags(ctx context.Context, dir, src string) error {
+	_, err := g.run(ctx, dir, "fetch", "--quiet", "--no-tags", src, "+refs/tags/*:refs/tags/*")
+	return err
+}
+
+// SetConfig sets a key in a repository's own config.
+func (g *Git) SetConfig(ctx context.Context, dir, key, value string) error {
+	_, err := g.run(ctx, dir, "config", key, value)
+	return err
+}
+
+// TagsContaining lists the tags whose history includes commit.
+func (g *Git) TagsContaining(ctx context.Context, dir, commit string) ([]string, error) {
+	out, err := g.run(ctx, dir, "tag", "--contains", commit)
+	if err != nil || out == "" {
+		return nil, err
+	}
+	return strings.Split(out, "\n"), nil
 }
 
 // RemoteURL returns the URL of a remote.

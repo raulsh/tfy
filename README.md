@@ -67,6 +67,24 @@ Hooks run outside the permission system, so tfy only takes them from the default
 
 **They improve unit after unit.** When a unit is done, a retrospective run looks at what went back and forth: review rounds, what people asked to change, comments on the pull requests, refused commands, failed CI. If that shows a gap in the conventions, it opens a unit (origin *retrospective*) proposing the change to `CLAUDE.md`, a rule, a hook or the pull request template. You accept or reject it like any proposal, and an accepted one lands as a reviewed pull request in the repository. The Conventions tab shows what each repository has today, and **Propose a change** starts such a unit by hand. Turn retrospectives off per project in the Pipeline tab.
 
+## Changes that merge in order
+
+Some changes across repositories cannot merge at once. A shared module has to be merged before the repositories that use it can pin its merged commit. A service has to be deployed before the clients that need it. The plan run then adds a **merge plan** to the spec: ordered steps, each a set of repositories merged together. For each step after the first it gives:
+
+- **what the step waits for** from the steps before it: `merged`; `released`, meaning CI (including any deploy) is green on their merge commits; or `tagged`, meaning a tag contains their merge commits, for dependencies consumed by version;
+- **an update** to make first, if any, such as "pin github.com/acme/api to the commit step 1 merged".
+
+You approve the plan with the spec. The whole change is developed and reviewed at once, as usual. Then:
+
+1. **Merge** merges the current step only.
+2. tfy waits for what the next step needs, reusing the release stage's CI tracking.
+3. For an update, a short development round changes just that step's repositories, and it is reviewed on its own.
+4. **Merge** is offered for the next step. **Continue to step N** skips a wait you don't need.
+
+Release notes and the retrospective come once, after the last step. Without a merge plan, everything merges together as before.
+
+**The unit's repositories are available as dependencies.** Agents have no credentials, so private repositories would be out of reach as dependencies. Each run's git config serves `github.com/<owner>/<repo>` URLs from the unit's checkouts, which hold its branches, the default branch as last fetched, and tags. tfy also adds them to `GOPRIVATE`. `go get github.com/acme/api@<commit>`, or an npm or pip git dependency, then works for a commit merged a minute ago or one that only exists on the unit's branch. Pushes through those URLs go nowhere, and the guard blocks pushes anyway.
+
 ## GitHub issues
 
 A unit can be linked to GitHub issues: create it from one (New unit → GitHub issue, or paste a link), or link it on the unit page.

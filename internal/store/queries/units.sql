@@ -39,3 +39,6 @@ UPDATE units SET updated_at = @now WHERE id = @id;
 
 -- name: ListChildUnits :many
 SELECT * FROM units WHERE parent_unit_id = @parent_unit_id ORDER BY seq;
+
+-- name: SetUnitMergeStep :exec
+UPDATE units SET merge_step = @merge_step, updated_at = @now WHERE id = @id;
