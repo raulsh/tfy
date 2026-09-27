@@ -148,6 +148,7 @@ type ReviewDiff struct {
 	Branch   string
 	File     string // under docs/review/
 	Commits  int
+	Checks   string // CI on the pull request: success, failure, pending, none
 }
 
 // Review is the data for review.tmpl.
@@ -157,6 +158,8 @@ type Review struct {
 	Diffs    []ReviewDiff
 	Criteria []Criterion
 	Round    int // 0 for the first review
+	// TestReport is what the implementer said about its own test runs.
+	TestReport string
 }
 
 // TriageMessage is one Slack message to triage.

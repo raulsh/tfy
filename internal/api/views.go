@@ -54,6 +54,7 @@ type UnitRepoView struct {
 	IsTarget      bool            `json:"is_target"`
 	Branch        string          `json:"branch"`
 	HeadSha       string          `json:"head_sha"`
+	ReviewedSha   string          `json:"reviewed_sha"`
 	PublishState  string          `json:"publish_state"`
 	PrNumber      int64           `json:"pr_number"`
 	PrURL         string          `json:"pr_url"`
@@ -68,7 +69,7 @@ type UnitRepoView struct {
 func unitRepoView(r db.ListUnitReposRow) UnitRepoView {
 	v := UnitRepoView{
 		RepoID: r.RepoID, FullName: r.FullName, DefaultBranch: r.DefaultBranch, CheckoutPath: r.CheckoutPath,
-		BaseSha: r.BaseSha, IsTarget: r.IsTarget, Branch: r.Branch, HeadSha: r.HeadSha, PublishState: r.PublishState,
+		BaseSha: r.BaseSha, IsTarget: r.IsTarget, Branch: r.Branch, HeadSha: r.HeadSha, ReviewedSha: r.ReviewedSha, PublishState: r.PublishState,
 		PrNumber: r.PrNumber, PrURL: r.PrUrl, PrState: r.PrState, ChecksState: r.ChecksState, MergeSha: r.MergeSha,
 		ReleaseState: r.ReleaseState, ReleaseRuns: json.RawMessage(r.ReleaseRuns),
 	}

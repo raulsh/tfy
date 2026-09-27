@@ -47,14 +47,13 @@ type Finding struct {
 // itself for the rest.
 const maxDiff = 400 << 10
 
-// decide applies thefactory's rule on top of the reviewer's verdict: any
-// unmet criterion or blocking finding requests changes.
+// decide turns the review into thefactory's decision. Only concrete
+// problems send work back: an unmet or partial criterion, or a blocker or
+// major finding. A criterion the reviewer could not verify (it cannot run
+// builds or tests; CI does) does not, whatever the reviewer's verdict.
 func (m *ReviewMeta) decide() string {
-	if m.Verdict != "approve" {
-		return "request_changes"
-	}
 	for _, c := range m.Criteria {
-		if c.Status == "unmet" {
+		if c.Status == "unmet" || c.Status == "partial" {
 			return "request_changes"
 		}
 	}
@@ -91,7 +90,10 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 	if err := os.MkdirAll(reviewDir, 0o755); err != nil {
 		return err
 	}
-	data := prompts.Review{Label: domain.Label(u.Seq), Title: u.Title, Criteria: specMeta.AcceptanceCriteria, Round: int(u.ReviewIteration)}
+	data := prompts.Review{
+		Label: domain.Label(u.Seq), Title: u.Title, Criteria: specMeta.AcceptanceCriteria, Round: int(u.ReviewIteration),
+		TestReport: p.lastTestReport(ctx, u),
+	}
 	reviewed := map[string]string{}
 	for _, ur := range targets {
 		if ur.PrNumber == 0 {
@@ -117,7 +119,14 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 		if log != "" {
 			commits = len(strings.Split(log, "\n"))
 		}
-		data.Diffs = append(data.Diffs, prompts.ReviewDiff{Dir: dirOf(ur), FullName: ur.FullName, Branch: ur.Branch, File: file, Commits: commits})
+		checks := ur.ChecksState
+		if pr, err := p.GH.PRView(ctx, ur.FullName, int(ur.PrNumber)); err == nil {
+			checks = pr.ChecksState()
+		}
+		if checks == "" {
+			checks = "none"
+		}
+		data.Diffs = append(data.Diffs, prompts.ReviewDiff{Dir: dirOf(ur), FullName: ur.FullName, Branch: ur.Branch, File: file, Commits: commits, Checks: checks})
 		reviewed[ur.FullName] = head
 		if err := p.Store.Q.SetUnitRepoReviewed(ctx, db.SetUnitRepoReviewedParams{ReviewedSha: head, Now: store.Now(), UnitID: u.ID, RepoID: ur.RepoID}); err != nil {
 			return err
@@ -319,4 +328,40 @@ func (p *Pipeline) latestReview(ctx context.Context, u db.Unit) (ReviewMeta, boo
 	}
 	var m ReviewMeta
 	return m, json.Unmarshal([]byte(doc.Meta), &m) == nil
+}
+
+// lastTestReport summarizes what the last development run said about its
+// tests, for the reviewer, who cannot run them.
+func (p *Pipeline) lastTestReport(ctx context.Context, u db.Unit) string {
+	run, err := p.Store.Q.LastSessionRun(ctx, db.LastSessionRunParams{UnitID: store.NullString(u.ID), Kind: "develop"})
+	if err != nil {
+		return ""
+	}
+	var out struct {
+		Repos []struct {
+			Repo        string `json:"repo"`
+			Changed     bool   `json:"changed"`
+			TestsRun    bool   `json:"tests_run"`
+			TestsPassed bool   `json:"tests_passed"`
+			Notes       string `json:"notes"`
+		} `json:"repos"`
+	}
+	if json.Unmarshal([]byte(run.Result), &out) != nil {
+		return ""
+	}
+	var lines []string
+	for _, r := range out.Repos {
+		switch {
+		case !r.TestsRun:
+			lines = append(lines, r.Repo+": tests not run")
+		case r.TestsPassed:
+			lines = append(lines, r.Repo+": tests ran and passed")
+		default:
+			lines = append(lines, r.Repo+": tests ran and FAILED")
+		}
+		if r.Notes != "" {
+			lines[len(lines)-1] += " (" + r.Notes + ")"
+		}
+	}
+	return strings.Join(lines, "; ")
 }

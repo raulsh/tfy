@@ -1175,3 +1175,26 @@ func TestAvailableActionsNeverNull(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewDecision(t *testing.T) {
+	cases := []struct {
+		name string
+		meta ReviewMeta
+		want string
+	}{
+		// Seen for real: the reviewer could not run the tests, marked a
+		// criterion not_verifiable and asked for changes it could not name.
+		{"unverifiable is not a defect", ReviewMeta{Verdict: "request_changes",
+			Criteria: []CriterionVerdict{{ID: "AC-1", Status: "met"}, {ID: "AC-7", Status: "not_verifiable"}},
+			Findings: []Finding{{Severity: "minor"}, {Severity: "nit"}}}, "approve"},
+		{"unmet criterion", ReviewMeta{Verdict: "approve", Criteria: []CriterionVerdict{{ID: "AC-1", Status: "unmet"}}}, "request_changes"},
+		{"partial criterion", ReviewMeta{Verdict: "approve", Criteria: []CriterionVerdict{{ID: "AC-1", Status: "partial"}}}, "request_changes"},
+		{"major finding", ReviewMeta{Verdict: "approve", Criteria: []CriterionVerdict{{ID: "AC-1", Status: "met"}}, Findings: []Finding{{Severity: "major"}}}, "request_changes"},
+		{"clean", ReviewMeta{Verdict: "approve", Criteria: []CriterionVerdict{{ID: "AC-1", Status: "met"}}}, "approve"},
+	}
+	for _, c := range cases {
+		if got := c.meta.decide(); got != c.want {
+			t.Errorf("%s: decide() = %s, want %s", c.name, got, c.want)
+		}
+	}
+}

@@ -50,6 +50,9 @@ func (p *Pipeline) merge(ctx context.Context, job db.Job, u db.Unit) error {
 		if ur.ReviewedSha != "" && pr.HeadRefOid != "" && pr.HeadRefOid != ur.ReviewedSha {
 			return p.mergeBlocked(ctx, u, domain.AttentionHeadChanged, fmt.Sprintf("%s #%d has commits the review did not see; review it again", ur.FullName, pr.Number))
 		}
+		if pr.ChecksState() == "failure" {
+			return p.mergeBlocked(ctx, u, domain.AttentionCIFailed, fmt.Sprintf("%s #%d has failing checks; fix them or merge on GitHub", ur.FullName, pr.Number))
+		}
 		switch pr.Mergeable {
 		case "CONFLICTING":
 			return p.mergeBlocked(ctx, u, domain.AttentionConflict, fmt.Sprintf("%s #%d conflicts with %s", ur.FullName, pr.Number, ur.DefaultBranch))

@@ -3,16 +3,16 @@
 You are the reviewer. Another agent implemented docs/spec.md; decide whether the change does what the spec says, and nothing it shouldn't. You cannot change the code: read, check, and report.
 
 Read docs/requirement.md and docs/spec.md first. The change in each repository is in these files, produced from `git diff` against the base the work started from:
-{{range .Diffs}}- docs/review/{{.File}}: {{.FullName}}, branch {{.Branch}} ({{.Commits}} commit(s))
+{{range .Diffs}}- docs/review/{{.File}}: {{.FullName}}, branch {{.Branch}} ({{.Commits}} commit(s)); CI on the pull request: {{.Checks}}
 {{end}}
-The checkouts themselves ({{range $i, $r := .Diffs}}{{if $i}}, {{end}}{{$r.Dir}}/{{end}}) are at the reviewed commit, so you can read any file for context and run read-only commands (ls, cat, rg, find).
+The checkouts themselves ({{range $i, $r := .Diffs}}{{if $i}}, {{end}}{{$r.Dir}}/{{end}}) are at the reviewed commit, so you can read any file for context and run read-only commands (ls, cat, rg, find). You cannot build, run tests, or run linters: CI does that, and its state is given above.{{if .TestReport}} The implementer reports: {{.TestReport}}.{{end}} Judge from the code; do not request changes merely because you could not run something.
 
 Acceptance criteria to verify:
 {{range .Criteria}}- {{.ID}}: {{.Text}}
 {{end}}
 {{if .Round}}This is review round {{.Round}}; earlier rounds asked for changes, and the implementer has addressed them since.
 {{end}}
-For every criterion, decide whether it is met, partial, unmet, or not_verifiable from the code, and cite the evidence (files and lines, or tests). Then list findings: bugs, missing tests, security problems, changes the spec did not ask for, or anything that would make you block the pull request. Grade each finding:
+For every criterion, decide whether it is met, partial, unmet, or not_verifiable, and cite the evidence (files and lines, or tests). Use not_verifiable only when the code cannot tell you; if CI is green and the code implements the criterion, it is met. Then list findings: bugs, missing tests, security problems, changes the spec did not ask for, or anything that would make you block the pull request. Grade each finding:
 
 - blocker: the change is wrong or unsafe as it stands
 - major: must be fixed before merging
@@ -21,4 +21,4 @@ For every criterion, decide whether it is met, partial, unmet, or not_verifiable
 
 Be strict about the criteria and fair about everything else: do not invent requirements the spec does not state.
 
-Return the structured output: verdict ("approve" only when every criterion is met and nothing is blocker or major, otherwise "request_changes"), the criteria with status and evidence, the findings, and a short summary written for the person who will merge.
+Return the structured output: verdict ("request_changes" when a criterion is unmet or partial, or a finding is blocker or major; otherwise "approve"), the criteria with status and evidence, the findings, and a short summary written for the person who will merge.

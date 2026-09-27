@@ -40,3 +40,20 @@ Run on 2026-09-27 against a local sandbox: a unit-style workspace with two git r
 - The run succeeded: 6 turns, $0.08 on sonnet at low effort.
 
 Found along the way: **the Bash tool's working directory persists between calls**. After a `cd repo-a`, a later `cd repo-b` failed. Prompts tell Claude to use `git -C <repo>` and paths relative to the workspace root.
+
+## First real run (2026-09-27)
+
+One bugfix unit went through every stage against `raulsh/thefactory-sandbox` (private), with the default models: opus at high effort for define, plan, develop and review, and sonnet at low effort for the release notes.
+
+| Stage | Duration | Cost | Result |
+|---|---|---|---|
+| define | 24s | $0.09 | Requirement with six testable requirements, stated assumptions and open questions. |
+| plan | 74s | $0.28 | Spec with exact changes, a test plan and seven acceptance criteria. One `dontAsk` denial (a compound shell loop); Claude used Read instead. |
+| develop | 51s | $0.26 | `permissionMode: auto`. Five shell commands, all allowed by the guard. Tests run, the binary built and curled, one local commit. |
+| publish | | | Pushed over SSH, PR #1 opened with the acceptance-criteria checklist. CI green. |
+| review, round 1 | | | Every criterion met or not verifiable, no defects, yet "request_changes". **Bug:** the reviewer cannot run tests and blocked on AC-7 ("gofmt/go test pass"). Fixed: only unmet or partial criteria, or blocker or major findings, send work back. The reviewer now gets the PR's CI state and the implementer's test report. |
+| develop, round 2 and review, round 2 | | $0.28 | No changes needed; approved. |
+| merge | | | From the API: preflight, then `gh pr merge --squash --match-head-commit --delete-branch`. |
+| release | 5s | $0.01 | Notes from sonnet. CI on the merge commit was followed until green; unit done. |
+
+Total: about $1.16 and 7 minutes of agent time, including the unnecessary round.
