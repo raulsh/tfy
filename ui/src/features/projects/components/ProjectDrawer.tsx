@@ -235,6 +235,14 @@ function SettingsTab({ project }: { project: Project }) {
 					<Input style={{ width: 260, fontFamily: "var(--tf-mono)" }} placeholder="tfy/u{seq}-{slug}" />
 				</Form.Item>
 				<Form.Item
+					name="suggest_issue_updates"
+					label="Suggest issue updates when the requirement is ready"
+					valuePropName="checked"
+					extra="Checks each linked GitHub issue against what tfy gathered, and suggests a comment or a clearer description. Nothing is posted until you do."
+				>
+					<Switch />
+				</Form.Item>
+				<Form.Item
 					name="learn_from_units"
 					label="Suggest convention updates after each unit"
 					valuePropName="checked"

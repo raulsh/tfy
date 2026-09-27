@@ -21,6 +21,10 @@ type ProjectSettings struct {
 	// LearnFromUnits runs a retrospective when a unit is done, which may
 	// propose changes to the repositories' Claude Code conventions.
 	LearnFromUnits bool `json:"learn_from_units"`
+	// SuggestIssueUpdates checks a unit's linked GitHub issues once its
+	// requirement is marked ready, and suggests how they could say more.
+	// Nothing is written to GitHub until a person applies a suggestion.
+	SuggestIssueUpdates bool `json:"suggest_issue_updates"`
 }
 
 // DefaultProjectSettings are applied to new projects.

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/shared/api/client";
-import type { GitHubRepo, Project, ProjectSettings, Repo, RepoConventions } from "@/shared/api/types";
+import type { GitHubRepo, IssueOption, Project, ProjectSettings, Repo, RepoConventions } from "@/shared/api/types";
 
 export function useProjects() {
 	return useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
@@ -97,4 +97,15 @@ export function useConventions(projectId: string) {
 		onSuccess: (data) => qc.setQueryData(["conventions", projectId], data),
 	});
 	return { ...q, refresh };
+}
+
+// Open issues of a project's repositories, for linking; q searches them.
+export function useProjectIssues(projectId: string | undefined, q: string, enabled: boolean) {
+	return useQuery({
+		queryKey: ["project-issues", projectId, q],
+		queryFn: () => api.get<IssueOption[]>(`/projects/${projectId}/issues${query({ q: q || undefined })}`),
+		enabled: enabled && !!projectId,
+		staleTime: 30_000,
+		retry: false,
+	});
 }

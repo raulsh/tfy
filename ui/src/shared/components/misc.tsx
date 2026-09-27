@@ -39,10 +39,14 @@ export function TimeAgo({ at }: { at: string | null | undefined }) {
 	);
 }
 
+// HTML comments are hidden, as GitHub hides them: tfy's own markers, and
+// the notes in pull request templates.
+const htmlComment = /<!--[\s\S]*?-->/g;
+
 export function Markdown({ children }: { children: string }) {
 	return (
 		<div className="tf-markdown">
-			<ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+			<ReactMarkdown remarkPlugins={[remarkGfm]}>{children.replace(htmlComment, "")}</ReactMarkdown>
 		</div>
 	);
 }

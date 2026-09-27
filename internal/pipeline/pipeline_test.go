@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -121,7 +122,7 @@ func fakeClaude() int {
 	if dir := os.Getenv("FAKE_CONTROL"); dir != "" {
 		_ = os.MkdirAll(dir, 0o755)
 		kind := "other"
-		for k, marker := range map[string]string{"define": "open_questions", "plan": "acceptance_criteria", "triage": "group_key", "develop": "tests_passed", "learn": "pr_template"} {
+		for k, marker := range map[string]string{"define": "open_questions", "plan": "acceptance_criteria", "triage": "group_key", "develop": "tests_passed", "learn": "pr_template", "issue": "worth_updating"} {
 			if strings.Contains(schema, marker) {
 				kind = k
 			}
@@ -135,6 +136,14 @@ func fakeClaude() int {
 
 	var out any
 	switch {
+	case strings.Contains(schema, "worth_updating"):
+		// Checking a linked issue: $FAKE_CONTROL/issue.json, or no update.
+		out = map[string]any{"worth_updating": false, "reason": "The issue says it all.", "comment": "", "title": "", "body": ""}
+		if b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "issue.json")); err == nil {
+			var v any
+			_ = json.Unmarshal(b, &v)
+			out = v
+		}
 	case strings.Contains(schema, "pr_template"):
 		// The retrospective: $FAKE_CONTROL/learn.json, or nothing to change.
 		out = map[string]any{"summary": "Nothing to change.", "title": "", "changes": []any{}}
@@ -359,6 +368,47 @@ func savePRs(repo string, prs []fakePR) {
 	_ = os.WriteFile(ghStateFile(repo), b, 0o644)
 }
 
+type fakeAuthor struct {
+	Login string `json:"login"`
+	IsBot bool   `json:"is_bot"`
+}
+
+type fakeComment struct {
+	Author    fakeAuthor `json:"author"`
+	Body      string     `json:"body"`
+	CreatedAt string     `json:"createdAt"`
+}
+
+// fakeIssue is an issue on the fake GitHub, as gh prints it. A pull request
+// looks like one too, with its /pull/ URL, as with the real gh.
+type fakeIssue struct {
+	Number    int                 `json:"number"`
+	Title     string              `json:"title"`
+	Body      string              `json:"body"`
+	State     string              `json:"state"`
+	URL       string              `json:"url"`
+	Author    fakeAuthor          `json:"author"`
+	Labels    []map[string]string `json:"labels"`
+	Comments  []fakeComment       `json:"comments"`
+	UpdatedAt string              `json:"updatedAt"`
+}
+
+func issuesFile(repo string) string {
+	return filepath.Join(os.Getenv("FAKE_GH_STATE"), "issues_"+strings.ReplaceAll(repo, "/", "_")+".json")
+}
+
+func loadIssues(repo string) []fakeIssue {
+	var out []fakeIssue
+	b, _ := os.ReadFile(issuesFile(repo))
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+func saveIssues(repo string, issues []fakeIssue) {
+	b, _ := json.Marshal(issues)
+	_ = os.WriteFile(issuesFile(repo), b, 0o644)
+}
+
 func fakeGH() int {
 	args := os.Args[1:]
 	if len(args) == 1 && args[0] == "--version" {
@@ -392,7 +442,45 @@ func fakeGH() int {
 	case "repo list":
 		print([]map[string]any{{"nameWithOwner": "acme/app", "description": "The Acme web app", "isPrivate": true, "defaultBranchRef": map[string]string{"name": "main"}}})
 	case "repo view":
-		print(map[string]any{"nameWithOwner": args[2], "defaultBranchRef": map[string]string{"name": "main"}})
+		visibility := "PRIVATE"
+		if b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "visibility")); err == nil {
+			visibility = strings.TrimSpace(string(b))
+		}
+		print(map[string]any{"nameWithOwner": args[2], "defaultBranchRef": map[string]string{"name": "main"},
+			"visibility": visibility, "isPrivate": visibility != "PUBLIC"})
+	case "issue view", "issue comment", "issue edit":
+		issues := loadIssues(repo)
+		i := slices.IndexFunc(issues, func(is fakeIssue) bool { return fmt.Sprint(is.Number) == args[2] })
+		if i < 0 {
+			fmt.Fprintf(os.Stderr, "GraphQL: Could not resolve to an issue or pull request with the number of %s.\n", args[2])
+			return 1
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		switch args[1] {
+		case "view":
+			print(issues[i])
+			return 0
+		case "comment":
+			body, _ := os.ReadFile(flagValue(args, "--body-file"))
+			issues[i].Comments = append(issues[i].Comments, fakeComment{Author: fakeAuthor{Login: "demo"}, Body: string(body), CreatedAt: now})
+			fmt.Printf("%s#issuecomment-%d\n", issues[i].URL, len(issues[i].Comments))
+		case "edit":
+			body, _ := os.ReadFile(flagValue(args, "--body-file"))
+			issues[i].Body = strings.TrimSuffix(string(body), "\n")
+			if t := flagValue(args, "--title"); t != "" {
+				issues[i].Title = t
+			}
+		}
+		issues[i].UpdatedAt = now
+		saveIssues(repo, issues)
+	case "issue list":
+		out := []fakeIssue{}
+		for _, is := range loadIssues(repo) {
+			if is.State == "OPEN" && strings.Contains(strings.ToLower(is.Title), strings.ToLower(flagValue(args, "--search"))) {
+				out = append(out, is)
+			}
+		}
+		print(out)
 	case "repo clone":
 		src := filepath.Join(os.Getenv("FAKE_REMOTES"), args[2]+".git")
 		if out, err := exec.Command("git", "clone", "--bare", "--quiet", src, args[3]).CombinedOutput(); err != nil {
@@ -724,7 +812,7 @@ func TestUnitFromIdeaToMergedPR(t *testing.T) {
 	}
 
 	// Opening the pull request again (a retried publish) reuses it.
-	n, url, err := h.p.ensurePR(ctx, u, ur, SpecMeta{}, prText{}, false, nil)
+	n, url, err := h.p.ensurePR(ctx, u, ur, prContext{}, nil)
 	if err != nil || n != 1 || url != ur.PrUrl {
 		t.Fatalf("ensurePR again = %d %s (%v)", n, url, err)
 	}

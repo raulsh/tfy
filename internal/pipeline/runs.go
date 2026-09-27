@@ -22,7 +22,9 @@ import (
 // runRequest describes one Claude run, for a unit or (triage) a project.
 type runRequest struct {
 	Unit db.Unit
-	// ProjectID and Cwd are for runs without a unit.
+	// ProjectID is for runs without a unit. Cwd is where runs without a
+	// unit start; a unit's run that sets it starts there instead of the
+	// workspace.
 	ProjectID     string
 	Cwd           string
 	Kind          string // profile and stage name
@@ -56,7 +58,13 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 
 	cwd, projectID := req.Unit.WorkspacePath, req.Unit.ProjectID
 	if req.Unit.ID == "" {
-		cwd, projectID = req.Cwd, req.ProjectID
+		projectID = req.ProjectID
+	}
+	// A run of a unit may still start elsewhere: then it is not one of the
+	// workspace's sessions, and the workspace is left alone.
+	inWorkspace := req.Unit.ID != "" && req.Cwd == ""
+	if req.Cwd != "" {
+		cwd = req.Cwd
 	}
 	spec := &claude.Spec{
 		Prompt:             req.Prompt,
@@ -82,13 +90,16 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 	// A unit's runs load conventions the way Claude Code does in a
 	// repository: the workspace is made a Claude Code project first.
 	var cp claudeProject
-	if req.Unit.ID != "" {
+	if inWorkspace {
 		urs, err := p.Store.Q.ListUnitRepos(ctx, req.Unit.ID)
 		if err != nil {
 			return db.Run{}, nil, err
 		}
 		if cp, err = p.prepareClaudeProject(ctx, req.Unit, urs, profile.Guarded); err != nil {
 			return db.Run{}, nil, fmt.Errorf("prepare the workspace for Claude: %w", err)
+		}
+		if err := p.writeIssueFiles(ctx, req.Unit); err != nil {
+			return db.Run{}, nil, fmt.Errorf("write the linked issues: %w", err)
 		}
 		spec.SettingSources = []string{"project"}
 	}

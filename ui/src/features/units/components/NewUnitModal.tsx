@@ -2,6 +2,7 @@ import { App, Form, Input, Modal, Segmented, Select } from "antd";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useScope } from "@/app/scope";
+import { IssuePicker, kindFromLabels } from "@/features/projects/components/IssuePicker";
 import { useProjects } from "@/features/projects/hooks";
 import { type NewUnit, useCreateUnit } from "../hooks";
 
@@ -22,6 +23,7 @@ export function NewUnitModal({
 	const { data: projects } = useProjects();
 	const { projectId } = useScope();
 	const create = useCreateUnit();
+	const projectIdValue = Form.useWatch("project_id", form);
 	const navigate = useNavigate();
 	const { message } = App.useApp();
 
@@ -67,6 +69,19 @@ export function NewUnitModal({
 						notFoundContent="Create a project first"
 					/>
 				</Form.Item>
+				<Form.Item
+					name="issue"
+					label="GitHub issue"
+					extra="Optional. Claude reads the issue, the title and kind come from it, and merging the pull requests closes it."
+				>
+					<IssuePicker
+						projectId={projectIdValue}
+						onPick={(o) => {
+							if (!form.getFieldValue("title")) form.setFieldsValue({ title: o.title });
+							form.setFieldsValue({ kind: kindFromLabels(o.labels) });
+						}}
+					/>
+				</Form.Item>
 				<Form.Item name="kind" label="Kind">
 					<Segmented
 						options={[
@@ -77,7 +92,12 @@ export function NewUnitModal({
 						]}
 					/>
 				</Form.Item>
-				<Form.Item name="title" label="Title" rules={[{ required: true, message: "Give it a title" }]}>
+				<Form.Item
+					name="title"
+					label="Title"
+					dependencies={["issue"]}
+					rules={[({ getFieldValue }) => ({ required: !getFieldValue("issue"), message: "Give it a title" })]}
+				>
 					<Input placeholder="e.g. /health returns 200 even when the database is down" maxLength={140} />
 				</Form.Item>
 				<Form.Item name="description" label="Description">

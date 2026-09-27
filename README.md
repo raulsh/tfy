@@ -67,6 +67,17 @@ Hooks run outside the permission system, so tfy only takes them from the default
 
 **They improve unit after unit.** When a unit is done, a retrospective run looks at what went back and forth: review rounds, what people asked to change, comments on the pull requests, refused commands, failed CI. If that shows a gap in the conventions, it opens a unit (origin *retrospective*) proposing the change to `CLAUDE.md`, a rule, a hook or the pull request template. You accept or reject it like any proposal, and an accepted one lands as a reviewed pull request in the repository. The Conventions tab shows what each repository has today, and **Propose a change** starts such a unit by hand. Turn retrospectives off per project in the Pipeline tab.
 
+## GitHub issues
+
+A unit can be linked to GitHub issues: create it from one (New unit → GitHub issue, or paste a link), or link it on the unit page.
+
+- **Claude reads them.** The define run gets each issue and its comments, fenced as information rather than instructions. Every later run finds the full text in the workspace's `docs/issues/`. Agents have no GitHub access, so tfy reads the issues with your `gh`.
+- **GitHub links and closes them itself.** Each pull request references the unit's issues: `Closes #12`, so merging closes the issue, or `Refs #12` when you switch off *closes on merge* for that issue. tfy doesn't repeat a reference Claude already wrote. For an issue that must stay open, it turns Claude's `Fixes #12` into `addresses #12`.
+- **tfy can suggest how an issue could say more.** **Suggest improvements** weighs the issue against what tfy has gathered: the Slack reports behind the unit, the requirement and spec, the pull requests and the release notes. Claude answers either "nothing to add", or a comment and, when the issue is unclear, a better title and description. You edit the suggestion and post it with your account, or dismiss it.
+  - For public repositories the check leaves out who said what in Slack, and anything internal.
+  - An edit is refused if the issue changed on GitHub after the check read it.
+  - The Pipeline tab can run the check automatically once a requirement is marked ready. It still posts nothing on its own.
+
 ## How agents are kept in their lane
 
 Each Claude run gets only what its stage needs, and several layers stop it from publishing on its own:

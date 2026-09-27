@@ -37,6 +37,9 @@ const (
 	JobTriage  = "triage"
 	JobRelease = "release"
 	JobLearn   = "learn"
+	// JobIssueCheck checks a linked issue beside the unit's own work: it
+	// has no unit, so it never makes the unit busy.
+	JobIssueCheck = "issue_check"
 )
 
 // jobForState is the job that does the work of a working state; it is what
@@ -96,6 +99,7 @@ func New(d Deps) *Pipeline {
 	d.Jobs.Register(JobTriage, jobs.Kind{Handler: p.triage, Claude: true})
 	d.Jobs.Register(JobRelease, jobs.Kind{Handler: p.unitJob(p.release), Claude: true})
 	d.Jobs.Register(JobLearn, jobs.Kind{Handler: p.unitJob(p.learn), Claude: true})
+	d.Jobs.Register(JobIssueCheck, jobs.Kind{Handler: p.issueCheck, Claude: true})
 	d.Jobs.OnInterrupted = func(ctx context.Context, j db.Job) {
 		if j.UnitID.Valid {
 			p.flag(ctx, j.UnitID.String, domain.AttentionInterrupted,

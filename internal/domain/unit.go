@@ -180,6 +180,8 @@ const (
 	// OriginRetrospective units change the repositories' Claude Code
 	// conventions, as proposed by the retrospective of an earlier unit.
 	OriginRetrospective Origin = "retrospective"
+	// OriginGitHubIssue units were created from a GitHub issue.
+	OriginGitHubIssue Origin = "github_issue"
 )
 
 // Label is how a unit is referred to by people: U-42.

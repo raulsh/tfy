@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +17,9 @@ import (
 	"github.com/raulsh/tfy/internal/store/db"
 )
 
-// TestRealClaude drives one unit through define, plan, develop, publish,
-// review, merge, release and its retrospective with the real Claude Code CLI (sonnet, low effort) against the
+// TestRealClaude drives one unit, made from a GitHub issue, through define,
+// an issue check, plan, develop, publish, review, merge, release and its
+// retrospective with the real Claude Code CLI (sonnet, low effort) against the
 // local fake GitHub. It spends a little money and never touches GitHub, so
 // it only runs with TFY_REAL_CLAUDE=1:
 //
@@ -33,7 +35,7 @@ func TestRealClaude(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.p.Runner.Bin, h.p.Config.ClaudeBin = bin, bin
-	for _, kind := range []string{"define", "plan", "develop", "review", "release", "learn"} {
+	for _, kind := range []string{"define", "plan", "develop", "review", "release", "learn", "issue"} {
 		h.p.Config.Stages[kind] = config.Stage{Model: "sonnet", Effort: "low", Budget: 1, Timeout: 10 * time.Minute}
 	}
 	// The guard and Stop hooks run the tfy binary from the data directory.
@@ -56,13 +58,34 @@ func TestRealClaude(t *testing.T) {
 	if _, err := h.p.UpdateProject(ctx, pr.ID, ProjectInput{Name: pr.Name, Conventions: &conv}); err != nil {
 		t.Fatal(err)
 	}
-	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "feature", Title: "Add a greeting script",
+	saveIssues("acme/app", []fakeIssue{{Number: 3, Title: "Greet people from the command line", State: "OPEN", URL: "https://github.com/acme/app/issues/3",
+		Author: fakeAuthor{Login: "ana"}, Labels: []map[string]string{{"name": "enhancement"}}, UpdatedAt: "2026-09-27T10:00:00Z",
+		Body:     "It would be nice to have a script that says hello.",
+		Comments: []fakeComment{{Author: fakeAuthor{Login: "bo"}, Body: "Please keep it POSIX sh: CI runs dash.", CreatedAt: "2026-09-27T11:00:00Z"}}}})
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "feature", Title: "Add a greeting script", Issue: "#3",
 		Description: "Add bin/hello, a POSIX sh script that prints `Hello, <name>!` for its first argument, or `Hello, world!` without one. Keep it tiny."})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wait := func(s domain.State) db.Unit { return h.waitStateFor(u.ID, s, 15*time.Minute) }
 	u = wait(domain.StateDefinitionReview)
+
+	// The issue check, with the real CLI: a vague issue next to a drafted
+	// requirement.
+	issue := h.issues(u.ID)[0]
+	if _, err := h.p.CheckIssue(ctx, u.ID, issue.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Minute); ; time.Sleep(time.Second) {
+		row, _ := h.st.Q.GetUnitIssue(ctx, db.GetUnitIssueParams{ID: issue.ID, UnitID: u.ID})
+		if (row.SuggestionState == SuggestionReady || row.SuggestionState == SuggestionNone) && !h.p.IssueCheckActive(ctx, issue.ID) {
+			t.Logf("issue check: %s\n%s", row.SuggestionState, row.Suggestion)
+			break
+		}
+		if row.SuggestionState == SuggestionFailed || time.Now().After(deadline) {
+			t.Fatalf("issue check: %s %s", row.SuggestionState, row.Suggestion)
+		}
+	}
 	if _, err := h.p.Act(ctx, u.ID, ActionMarkReady, ActionInput{}); err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +111,9 @@ func TestRealClaude(t *testing.T) {
 	t.Logf("pull request: %q\n%s", opened.Title, opened.Body)
 	if !strings.Contains(opened.Title, ": ") || opened.Title == u.Title || !strings.Contains(opened.Body, "<!-- tfy:U-1 -->") {
 		t.Errorf("the pull request must carry Claude's conventional title and description: %q", opened.Title)
+	}
+	if !strings.Contains(opened.Body, "Closes #3") && !regexp.MustCompile(`(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?\s+#3\b`).MatchString(opened.Body) {
+		t.Error("the pull request must close the issue")
 	}
 	// Merged: with no CI on the fake GitHub the unit is done at once, and
 	// its retrospective runs.

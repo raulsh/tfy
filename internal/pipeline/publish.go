@@ -29,16 +29,10 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 		return err
 	}
 	targets := targetsOf(urs)
-	project, err := p.Store.Q.GetProject(ctx, u.ProjectID)
+	pc, err := p.prContextFor(ctx, u)
 	if err != nil {
 		return err
 	}
-	settings := domain.ParseProjectSettings(project.Settings)
-	var spec SpecMeta
-	if doc, err := p.Store.Q.LatestDocument(ctx, db.LatestDocumentParams{UnitID: u.ID, Kind: DocSpec}); err == nil {
-		_ = json.Unmarshal([]byte(doc.Meta), &spec)
-	}
-	report := p.developReport(ctx, u)
 
 	var published []db.ListUnitReposRow
 	for _, ur := range targets {
@@ -71,7 +65,7 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 		}); err != nil {
 			return err
 		}
-		number, url, err := p.ensurePR(ctx, u, ur, spec, report.pullRequest(ur), settings.DraftPRs, nil)
+		number, url, err := p.ensurePR(ctx, u, ur, pc, nil)
 		if err != nil {
 			return err
 		}
@@ -94,7 +88,7 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 	if len(published) > 1 {
 		// Cross-link the pull requests of a multi-repo change.
 		for _, ur := range published {
-			if _, _, err := p.ensurePR(ctx, u, ur, spec, report.pullRequest(ur), settings.DraftPRs, published); err != nil {
+			if _, _, err := p.ensurePR(ctx, u, ur, pc, published); err != nil {
 				p.Log.Warn("link sibling pull requests", "unit", u.ID, "repo", ur.FullName, "error", err)
 			}
 		}
@@ -141,16 +135,38 @@ type prText struct {
 	Body  string
 }
 
+// prContext is what all the pull requests of a unit are written from.
+type prContext struct {
+	Spec   SpecMeta
+	Report developOutput
+	Draft  bool
+	Issues []db.UnitIssue
+}
+
+func (p *Pipeline) prContextFor(ctx context.Context, u db.Unit) (prContext, error) {
+	project, err := p.Store.Q.GetProject(ctx, u.ProjectID)
+	if err != nil {
+		return prContext{}, err
+	}
+	pc := prContext{Report: p.developReport(ctx, u), Draft: domain.ParseProjectSettings(project.Settings).DraftPRs}
+	if doc, err := p.Store.Q.LatestDocument(ctx, db.LatestDocumentParams{UnitID: u.ID, Kind: DocSpec}); err == nil {
+		_ = json.Unmarshal([]byte(doc.Meta), &pc.Spec)
+	}
+	pc.Issues, _ = p.Store.Q.ListUnitIssues(ctx, u.ID)
+	return pc, nil
+}
+
 // ensurePR returns the branch's pull request, opening it if there is none,
 // and otherwise brings its title and description up to date. With siblings
 // set, the description links them.
-func (p *Pipeline) ensurePR(ctx context.Context, u db.Unit, ur db.ListUnitReposRow, spec SpecMeta, text prText, draft bool, siblings []db.ListUnitReposRow) (int, string, error) {
+func (p *Pipeline) ensurePR(ctx context.Context, u db.Unit, ur db.ListUnitReposRow, pc prContext, siblings []db.ListUnitReposRow) (int, string, error) {
+	text := pc.Report.pullRequest(ur)
 	body, err := os.CreateTemp("", "tfy-pr-*.md")
 	if err != nil {
 		return 0, "", err
 	}
 	defer os.Remove(body.Name())
-	if _, err := body.WriteString(prBody(u, ur, spec, text.Body, siblings)); err != nil {
+	if _, err := body.WriteString(prBody(u, ur, pc, text.Body, siblings)); err != nil {
 		return 0, "", err
 	}
 	body.Close()
@@ -174,11 +190,42 @@ func (p *Pipeline) ensurePR(ctx context.Context, u db.Unit, ur db.ListUnitReposR
 		}
 		return existing.Number, existing.URL, nil
 	}
-	url, err := p.GH.PRCreate(ctx, ur.FullName, ur.DefaultBranch, ur.Branch, title, body.Name(), draft)
+	url, err := p.GH.PRCreate(ctx, ur.FullName, ur.DefaultBranch, ur.Branch, title, body.Name(), pc.Draft)
 	if err != nil {
 		return 0, "", err
 	}
 	return prNumber(url), url, nil
+}
+
+// refreshPullRequests rewrites the descriptions of the unit's open pull
+// requests, after the issues linked to it changed.
+func (p *Pipeline) refreshPullRequests(ctx context.Context, u db.Unit) {
+	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
+	if err != nil {
+		return
+	}
+	var open []db.ListUnitReposRow
+	for _, ur := range targetsOf(urs) {
+		if ur.PrNumber > 0 && ur.PrState == "open" && ur.Branch != "" {
+			open = append(open, ur)
+		}
+	}
+	if len(open) == 0 {
+		return
+	}
+	pc, err := p.prContextFor(ctx, u)
+	if err != nil {
+		return
+	}
+	var siblings []db.ListUnitReposRow
+	if len(open) > 1 {
+		siblings = open
+	}
+	for _, ur := range open {
+		if _, _, err := p.ensurePR(ctx, u, ur, pc, siblings); err != nil {
+			p.activity(ctx, u.ID, "system", "pr", fmt.Sprintf("could not update the description of %s#%d: %v", ur.FullName, ur.PrNumber, err), nil)
+		}
+	}
 }
 
 func prNumber(url string) int {
@@ -188,28 +235,35 @@ func prNumber(url string) int {
 }
 
 // prBody is the description Claude wrote, or, when it wrote none, a summary
-// with the acceptance criteria. Links to the other pull requests of a change
-// across repositories follow, and an invisible marker ties the pull request
-// to its unit.
-func prBody(u db.Unit, ur db.ListUnitReposRow, spec SpecMeta, written string, siblings []db.ListUnitReposRow) string {
-	var b strings.Builder
+// with the acceptance criteria. The references to the linked issues follow,
+// then links to the other pull requests of a change across repositories,
+// and an invisible marker that ties the pull request to its unit.
+func prBody(u db.Unit, ur db.ListUnitReposRow, pc prContext, written string, siblings []db.ListUnitReposRow) string {
+	var desc strings.Builder
 	if written = strings.TrimSpace(written); written != "" {
-		b.WriteString(written + "\n\n")
+		desc.WriteString(written)
 	} else {
-		summary := spec.Summary
+		summary := pc.Spec.Summary
 		if summary == "" {
 			summary = u.Summary
 		}
 		if summary != "" {
-			b.WriteString(summary + "\n\n")
+			desc.WriteString(summary + "\n\n")
 		}
-		if len(spec.AcceptanceCriteria) > 0 {
-			b.WriteString("### Acceptance criteria\n\n")
-			for _, c := range spec.AcceptanceCriteria {
-				fmt.Fprintf(&b, "- [ ] **%s** %s\n", c.ID, c.Text)
+		if len(pc.Spec.AcceptanceCriteria) > 0 {
+			desc.WriteString("### Acceptance criteria\n\n")
+			for _, c := range pc.Spec.AcceptanceCriteria {
+				fmt.Fprintf(&desc, "- [ ] **%s** %s\n", c.ID, c.Text)
 			}
-			b.WriteString("\n")
 		}
+	}
+	text, refs := issueReferences(strings.TrimSpace(desc.String()), ur.FullName, pc.Issues)
+	var b strings.Builder
+	if text != "" {
+		b.WriteString(text + "\n\n")
+	}
+	if len(refs) > 0 {
+		b.WriteString(strings.Join(refs, "\n") + "\n\n")
 	}
 	var others []string
 	for _, s := range siblings {

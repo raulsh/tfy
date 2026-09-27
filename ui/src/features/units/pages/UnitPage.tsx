@@ -11,6 +11,7 @@ import { kindLabel, originLabel, stageLabel, toneColor, unitTone } from "@/share
 import { ActivityList } from "../components/ActivityList";
 import { DocumentPanel } from "../components/DocumentPanel";
 import { ExecutionPanel } from "../components/ExecutionPanel";
+import { IssuesCard } from "../components/IssuesCard";
 import { AttentionBanner, StageStepper, UnitActions, UnitStateTag } from "../components/parts";
 import { ReleasePanel } from "../components/ReleasePanel";
 import { RetrospectiveCard } from "../components/RetrospectiveCard";
@@ -86,6 +87,18 @@ export default function UnitPage() {
 					<Chip k="project" v={unit.project_name ?? ""} />
 					<Chip k="kind" v={kindLabel[unit.kind] ?? unit.kind} />
 					<Chip k="origin" v={originLabel[unit.origin] ?? unit.origin} />
+					{unit.issues.map((is) => (
+						<Chip
+							key={is.id}
+							k="issue"
+							title={is.title}
+							v={
+								<a href={is.url} target="_blank" rel="noreferrer">
+									{is.ref}
+								</a>
+							}
+						/>
+					))}
 					<Chip k="spend" v={usd(spend)} mono />
 				</div>
 				<div style={{ marginBottom: 12 }}>
@@ -168,6 +181,7 @@ export default function UnitPage() {
 									))}
 								</Card>
 							)}
+							<IssuesCard unit={unit} />
 							<RetrospectiveCard unit={unit} />
 							<Card title="Activity">
 								<ActivityList items={unit.activity} />

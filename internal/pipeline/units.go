@@ -32,11 +32,17 @@ type CreateUnitInput struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	CreatedBy   string `json:"created_by"`
+	// Issue, when set, is the GitHub issue the unit is for (a link,
+	// owner/repo#12 or #12). Title and kind then default to the issue's.
+	Issue string `json:"issue"`
 }
 
 // CreateUnit registers a unit and starts defining it. Developer units skip
 // the intake stage.
 func (p *Pipeline) CreateUnit(ctx context.Context, in CreateUnitInput) (db.Unit, error) {
+	if strings.TrimSpace(in.Issue) != "" {
+		return p.createUnitFromIssue(ctx, in)
+	}
 	kind, err := domain.ParseKind(in.Kind)
 	if err != nil {
 		return db.Unit{}, &InvalidError{Msg: err.Error()}
@@ -225,7 +231,12 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		if u, err = p.transition(ctx, u, domain.StatePlanning, actor, "requirement marked ready"); err != nil {
 			return u, err
 		}
-		return u, p.enqueue(ctx, JobPlan, u, planPayload{})
+		if err := p.enqueue(ctx, JobPlan, u, planPayload{}); err != nil {
+			return u, err
+		}
+		// The agreed requirement is what an issue most often lacks.
+		p.checkIssuesWhenReady(ctx, u)
+		return u, nil
 
 	case ActionApproveSpec:
 		if u, err = p.transition(ctx, u, domain.StateDeveloping, actor, "specification approved"); err != nil {

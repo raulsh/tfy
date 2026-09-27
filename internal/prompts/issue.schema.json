@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "worth_updating": {"type": "boolean"},
+    "reason": {"type": "string"},
+    "comment": {"type": "string"},
+    "title": {"type": "string"},
+    "body": {"type": "string"}
+  },
+  "required": ["worth_updating", "reason", "comment", "title", "body"],
+  "additionalProperties": false
+}

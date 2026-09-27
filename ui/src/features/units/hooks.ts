@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/shared/api/client";
-import type { DocumentMeta, Unit, UnitAction, UnitDetail, UnitDocument } from "@/shared/api/types";
+import type { DocumentMeta, LinkedIssue, Unit, UnitAction, UnitDetail, UnitDocument } from "@/shared/api/types";
 
 export function useUnits(projectId?: string) {
 	return useQuery({
@@ -34,6 +34,8 @@ export interface NewUnit {
 	kind: string;
 	title: string;
 	description: string;
+	// A GitHub issue the unit is for: a link, owner/repo#12, or #12.
+	issue?: string;
 }
 
 export function useCreateUnit() {
@@ -66,4 +68,40 @@ export function useSaveDocument(unitId: string, kind: string) {
 			qc.invalidateQueries({ queryKey: ["unit", unitId] });
 		},
 	});
+}
+
+// Mutations on a unit's linked GitHub issues; each refreshes the unit.
+export function useIssueActions(unitId: string) {
+	const qc = useQueryClient();
+	const done = () => qc.invalidateQueries({ queryKey: ["unit", unitId] });
+	const base = `/units/${unitId}/issues`;
+	return {
+		link: useMutation({
+			mutationFn: (v: { ref: string; closes?: boolean }) => api.post<LinkedIssue>(base, v),
+			onSettled: done,
+		}),
+		setCloses: useMutation({
+			mutationFn: (v: { id: string; closes: boolean }) =>
+				api.patch<LinkedIssue>(`${base}/${v.id}`, { closes: v.closes }),
+			onSettled: done,
+		}),
+		unlink: useMutation({ mutationFn: (id: string) => api.delete(`${base}/${id}`), onSettled: done }),
+		refresh: useMutation({
+			mutationFn: (id: string) => api.post<LinkedIssue>(`${base}/${id}/refresh`, {}),
+			onSettled: done,
+		}),
+		check: useMutation({
+			mutationFn: (id: string) => api.post<LinkedIssue>(`${base}/${id}/check`, {}),
+			onSettled: done,
+		}),
+		apply: useMutation({
+			mutationFn: (v: { id: string; mode: "comment" | "edit"; comment?: string; title?: string; body?: string }) =>
+				api.post<LinkedIssue>(`${base}/${v.id}/apply`, v),
+			onSettled: done,
+		}),
+		dismiss: useMutation({
+			mutationFn: (id: string) => api.post<LinkedIssue>(`${base}/${id}/dismiss`, {}),
+			onSettled: done,
+		}),
+	};
 }

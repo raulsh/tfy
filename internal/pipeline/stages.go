@@ -64,6 +64,7 @@ func (p *Pipeline) define(ctx context.Context, job db.Job, u db.Unit) error {
 		Title:          u.Title,
 		Description:    u.Description,
 		Feedback:       p.unitFeedback(ctx, u),
+		Issues:         promptIssues(p.unitIssues(ctx, u, true)),
 		Revision:       payload.Revision,
 		EditedByUser:   p.editedByUser(ctx, u, DocRequirement),
 	}
@@ -92,11 +93,14 @@ func (p *Pipeline) define(ctx context.Context, job db.Job, u db.Unit) error {
 	if _, err := p.snapshotDoc(ctx, u, DocRequirement, run.Result, run.ID); err != nil {
 		return err
 	}
+	// A person named a developer's unit, and an issue names its own; only
+	// units from Slack take the title and kind the requirement suggests.
 	title, kind := u.Title, u.Kind
-	if u.Origin != string(domain.OriginDeveloper) && strings.TrimSpace(meta.Title) != "" {
+	named := u.Origin == string(domain.OriginDeveloper) || u.Origin == string(domain.OriginGitHubIssue)
+	if !named && strings.TrimSpace(meta.Title) != "" {
 		title = meta.Title
 	}
-	if k, err := domain.ParseKind(meta.Kind); err == nil && meta.Kind != "" && u.Origin != string(domain.OriginDeveloper) {
+	if k, err := domain.ParseKind(meta.Kind); err == nil && meta.Kind != "" && !named {
 		kind = string(k)
 	}
 	summary := strings.TrimSpace(meta.Summary)
@@ -121,6 +125,7 @@ func (p *Pipeline) plan(ctx context.Context, job db.Job, u db.Unit) error {
 		Label:        domain.Label(u.Seq),
 		Title:        u.Title,
 		Repos:        promptRepos(urs, ""),
+		Issues:       promptIssues(p.unitIssues(ctx, u, true)),
 		Revision:     payload.Revision,
 		EditedByUser: p.editedByUser(ctx, u, DocSpec),
 	}
@@ -233,6 +238,7 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		Targets:         promptRepos(targets, branch),
 		Criteria:        meta.AcceptanceCriteria,
 		NewDependencies: meta.NewDependencies,
+		Issues:          promptIssues(p.unitIssues(ctx, u, false)),
 		Findings:        payload.Findings,
 	}
 	req := runRequest{Unit: u, Kind: "develop", Schema: prompts.Schema("develop")}

@@ -18,7 +18,7 @@ const defs: FacetDef<Run>[] = [
 		key: "kind",
 		label: "Kind",
 		get: (r) => r.kind,
-		order: ["triage", "define", "plan", "develop", "review", "release", "learn"],
+		order: ["triage", "define", "plan", "develop", "review", "release", "learn", "issue"],
 	},
 	{ key: "model", label: "Model", get: (r) => r.model },
 	{ key: "unit", label: "Unit", get: (r) => r.unit_label },

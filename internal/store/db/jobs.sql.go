@@ -12,6 +12,31 @@ import (
 	"time"
 )
 
+const activeJobByKey = `-- name: ActiveJobByKey :one
+SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at FROM jobs WHERE dedupe_key = ?1 AND status IN ('queued', 'running') LIMIT 1
+`
+
+func (q *Queries) ActiveJobByKey(ctx context.Context, dedupeKey sql.NullString) (Job, error) {
+	row := q.db.QueryRowContext(ctx, activeJobByKey, dedupeKey)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.UnitID,
+		&i.ProjectID,
+		&i.Payload,
+		&i.Status,
+		&i.Attempts,
+		&i.DedupeKey,
+		&i.RunAfter,
+		&i.Error,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const activeJobForUnit = `-- name: ActiveJobForUnit :one
 SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at FROM jobs WHERE unit_id = ?1 AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1
 `

@@ -20,6 +20,7 @@ Acceptance criteria:
 {{range .Criteria}}- {{.ID}}: {{.Text}}
 {{end}}
 {{if .NewDependencies}}Dependencies you may add: {{range $i, $d := .NewDependencies}}{{if $i}}, {{end}}{{$d}}{{end}}.
+{{end}}{{if .Issues}}The change is for {{range $i, $is := .Issues}}{{if $i}}, {{end}}{{$is.Ref}} ({{$is.Title}}){{end}}; their text is in docs/issues/. tfy adds the references to each pull request itself ("Closes …" or "Refs …"), so don't write closing keywords for them; mention them where the repository's template asks for related issues.
 {{end}}
 Rules:
 - Implement what the spec asks. If part of it is wrong or impossible, do the closest correct thing and explain why in your final summary.

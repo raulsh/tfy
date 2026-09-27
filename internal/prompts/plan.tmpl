@@ -15,7 +15,10 @@ The approved requirement is docs/requirement.md. Read it first.
 
 These repositories are checked out under your working directory, at the tip of their default branch:
 {{range .Repos}}- {{.Dir}}/ is {{.FullName}} ({{.DefaultBranch}})
-{{end}}
+{{end}}{{if .Issues}}
+The unit is linked to these GitHub issues. Their full text, comments included, is in docs/issues/; stack traces and steps to reproduce there can point you to the code.
+{{range .Issues}}- {{.Ref}}: {{.Title}} ({{.State}}), {{.File}}
+{{end}}{{end}}
 Explore the code to understand how it works today and what has to change. You can read files and run read-only commands (ls, cat, rg, find). You cannot change the repositories at this stage; only docs/ is writable.
 
 Write the specification to docs/spec.md. A developer who has never seen the requirement must be able to implement it from the spec alone.

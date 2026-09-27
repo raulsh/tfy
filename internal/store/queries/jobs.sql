@@ -35,3 +35,6 @@ UPDATE jobs SET dedupe_key = NULL WHERE id = @id;
 
 -- name: ListBusyUnitIDs :many
 SELECT DISTINCT CAST(unit_id AS TEXT) AS unit_id FROM jobs WHERE status IN ('queued', 'running') AND unit_id IS NOT NULL;
+
+-- name: ActiveJobByKey :one
+SELECT * FROM jobs WHERE dedupe_key = @dedupe_key AND status IN ('queued', 'running') LIMIT 1;

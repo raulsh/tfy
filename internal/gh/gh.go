@@ -353,3 +353,85 @@ func (c *Client) RunsForCommit(ctx context.Context, repo, sha string) ([]Workflo
 	var rs []WorkflowRun
 	return rs, c.runJSON(ctx, &rs, "run", "list", "--repo", repo, "--commit", sha, "--json", "databaseId,name,status,conclusion,url")
 }
+
+// Issue is a GitHub issue with its conversation.
+type Issue struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+	State  string `json:"state"` // OPEN | CLOSED
+	URL    string `json:"url"`
+	Author struct {
+		Login string `json:"login"`
+		IsBot bool   `json:"is_bot"`
+	} `json:"author"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	Comments []struct {
+		Author struct {
+			Login string `json:"login"`
+			IsBot bool   `json:"is_bot"`
+		} `json:"author"`
+		Body      string    `json:"body"`
+		CreatedAt time.Time `json:"createdAt"`
+	} `json:"comments"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ErrNotAnIssue is returned for a number that is a pull request: gh resolves
+// those as issues too.
+var ErrNotAnIssue = fmt.Errorf("that number is a pull request, not an issue")
+
+// IssueView reads an issue and its comments.
+func (c *Client) IssueView(ctx context.Context, repo string, number int) (*Issue, error) {
+	var is Issue
+	if err := c.runJSON(ctx, &is, "issue", "view", strconv.Itoa(number), "--repo", repo,
+		"--json", "number,title,body,state,url,author,labels,comments,updatedAt"); err != nil {
+		return nil, err
+	}
+	if strings.Contains(is.URL, "/pull/") || is.State == "MERGED" {
+		return nil, ErrNotAnIssue
+	}
+	return &is, nil
+}
+
+// IssueSummary is an issue as a list shows it.
+type IssueSummary struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// IssueList lists a repository's open issues, most recently updated first,
+// optionally matching a search.
+func (c *Client) IssueList(ctx context.Context, repo, search string, limit int) ([]IssueSummary, error) {
+	args := []string{"issue", "list", "--repo", repo, "--state", "open", "--limit", strconv.Itoa(limit),
+		"--json", "number,title,url,labels,updatedAt"}
+	if search != "" {
+		args = append(args, "--search", search)
+	}
+	var out []IssueSummary
+	return out, c.runJSON(ctx, &out, args...)
+}
+
+// IssueComment adds a comment to an issue and returns its URL.
+func (c *Client) IssueComment(ctx context.Context, repo string, number int, bodyFile string) (string, error) {
+	out, err := c.run(ctx, "issue", "comment", strconv.Itoa(number), "--repo", repo, "--body-file", bodyFile)
+	return strings.TrimSpace(string(out)), err
+}
+
+// IssueEdit replaces an issue's description, and its title unless title is
+// empty.
+func (c *Client) IssueEdit(ctx context.Context, repo string, number int, title, bodyFile string) error {
+	args := []string{"issue", "edit", strconv.Itoa(number), "--repo", repo, "--body-file", bodyFile}
+	if title != "" {
+		args = append(args, "--title", title)
+	}
+	_, err := c.run(ctx, args...)
+	return err
+}

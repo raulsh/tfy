@@ -130,6 +130,7 @@ export const originLabel: Record<string, string> = {
 	slack_manual: "Slack (manual)",
 	follow_up: "Follow-up",
 	retrospective: "Retrospective",
+	github_issue: "GitHub issue",
 };
 
 export function checksTone(s: string): Tone {

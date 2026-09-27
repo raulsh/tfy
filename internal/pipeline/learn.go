@@ -46,10 +46,13 @@ type LearnChange struct {
 	Why    string `json:"why"`
 }
 
-// afterDone starts the retrospective of a unit that just finished, when its
-// project learns from units. Units that change conventions are not looked
+// afterDone reads the unit's linked issues again, and starts the
+// retrospective of a unit that just finished when its project learns from
+// units. Units that change conventions are not looked
 // back at, so one change cannot beget another.
 func (p *Pipeline) afterDone(ctx context.Context, u db.Unit) {
+	// Merging may have closed the linked issues.
+	p.unitIssues(ctx, u, true)
 	if u.Origin == string(domain.OriginRetrospective) {
 		return
 	}

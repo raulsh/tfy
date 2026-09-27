@@ -75,6 +75,13 @@ var Profiles = map[string]Profile{
 		ForbidPush:     true,
 		MaxDenials:     40,
 	},
+	// issue weighs a linked GitHub issue against what tfy gathered; it only
+	// needs the text it is given.
+	"issue": {
+		Name:           "issue",
+		Tools:          []string{},
+		PermissionMode: ModeDontAsk,
+	},
 	"release": {
 		Name:           "release",
 		Tools:          []string{},

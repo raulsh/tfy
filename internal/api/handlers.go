@@ -48,6 +48,7 @@ func (s *Server) routes(r fiber.Router) {
 
 	r.Get("/events", s.globalStream())
 	s.intakeRoutes(r)
+	s.issueRoutes(r)
 }
 
 func limit(c fiber.Ctx, def, max int) int64 {
@@ -75,7 +76,7 @@ func (s *Server) configView(c fiber.Ctx) error {
 		Timeout string  `json:"timeout"`
 	}
 	stages := map[string]stageView{}
-	for _, kind := range []string{"triage", "define", "plan", "develop", "review", "release", "learn"} {
+	for _, kind := range []string{"triage", "define", "plan", "develop", "review", "release", "learn", "issue"} {
 		st := s.Config.Stage(kind)
 		stages[kind] = stageView{st.Model, st.Effort, st.Budget, st.Timeout.String()}
 	}
@@ -334,6 +335,7 @@ type UnitDetail struct {
 	Runs      []RunView               `json:"runs"`
 	Activity  []ActivityView          `json:"activity"`
 	Feedback  []FeedbackView          `json:"feedback"`
+	Issues    []IssueView             `json:"issues"`
 }
 
 func (s *Server) getUnit(c fiber.Ctx) error {
@@ -382,6 +384,9 @@ func (s *Server) getUnit(c fiber.Ctx) error {
 	}
 	for _, a := range acts {
 		d.Activity = append(d.Activity, activityView(a))
+	}
+	if d.Issues, err = s.unitIssueViews(c, u.ID); err != nil {
+		return err
 	}
 	return ok(c, d)
 }

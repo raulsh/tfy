@@ -132,6 +132,7 @@ export interface UnitDetail extends Unit {
 	runs: Run[];
 	activity: Activity[];
 	feedback: Feedback[];
+	issues: LinkedIssue[];
 }
 
 export type FeedbackStatus =
@@ -257,6 +258,7 @@ export interface ProjectSettings {
 	triage_confidence_min: number;
 	branch_template: string;
 	learn_from_units: boolean;
+	suggest_issue_updates: boolean;
 }
 
 export interface Repo {
@@ -357,4 +359,54 @@ export interface ConventionHook {
 	type: string;
 	command?: string;
 	timeout?: number;
+}
+
+// A GitHub issue linked to a unit, as tfy last read it.
+export interface LinkedIssue {
+	id: string;
+	repo: string;
+	number: number;
+	ref: string;
+	url: string;
+	title: string;
+	state: string;
+	author: string;
+	labels: string[];
+	body: string;
+	comments: { author: string; at: string; body: string }[];
+	public: boolean;
+	closes: boolean;
+	fetched_at: string | null;
+	issue_updated_at: string | null;
+	suggestion_state: "" | "running" | "ready" | "none" | "applied" | "dismissed" | "failed";
+	suggestion?: IssueSuggestion;
+}
+
+// What checking an issue against tfy's findings proposed, and what was done.
+export interface IssueSuggestion {
+	worth_updating: boolean;
+	reason: string;
+	comment: string;
+	title: string;
+	body: string;
+	base_title: string;
+	base_body: string;
+	run_id?: string;
+	error?: string;
+	commented?: boolean;
+	comment_url?: string;
+	edited?: boolean;
+	at: string;
+}
+
+// An open issue a unit could be linked to.
+export interface IssueOption {
+	repo: string;
+	number: number;
+	ref: string;
+	title: string;
+	url: string;
+	labels: string[];
+	updated_at: string;
+	units: string[];
 }

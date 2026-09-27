@@ -23,6 +23,23 @@ done
 git init -q -b main "$DEMO/seed"
 git -C "$DEMO/seed" -c user.name=demo -c user.email=demo@example.com commit -q --allow-empty -m "init"
 git clone -q --bare "$DEMO/seed" "$DEMO/remotes/acme/app.git"
+# Open issues on the fake GitHub, to create units from or link.
+cat > "$DEMO/gh-state/issues_acme_app.json" <<'JSON'
+[{"number": 3, "title": "Checkout crashes on Safari", "state": "OPEN", "url": "https://github.com/acme/app/issues/3",
+  "author": {"login": "ana"}, "labels": [{"name": "bug"}], "updatedAt": "2026-09-27T10:00:00Z",
+  "body": "Pressing Pay on Safari leaves a blank page.",
+  "comments": [{"author": {"login": "bo"}, "body": "Same on my iPad.", "createdAt": "2026-09-27T11:00:00Z"}]},
+ {"number": 5, "title": "Dark mode for the dashboard", "state": "OPEN", "url": "https://github.com/acme/app/issues/5",
+  "author": {"login": "cy"}, "labels": [{"name": "enhancement"}], "updatedAt": "2026-09-26T09:00:00Z",
+  "body": "The dashboard is too bright at night.", "comments": []}]
+JSON
+# What "Suggest improvements" answers in the demo.
+cat > "$DEMO/control/issue.json" <<'JSON'
+{"worth_updating": true, "reason": "The agreed requirement says which browsers are affected and what must happen instead.",
+ "comment": "Scope agreed for the fix: payment must work on Safari 17 on macOS and iPadOS. Pressing Pay opens the payment form; no blank page, no console errors.",
+ "title": "Checkout shows a blank page after pressing Pay on Safari 17",
+ "body": "Pressing Pay on Safari leaves a blank page.\n\n### Affected\nSafari 17 on macOS and iPadOS.\n\n### Expected\nThe payment form opens."}
+JSON
 go build -o "$DEMO/tfy" ./cmd/tfy
 
 export TFY_HOME="$DEMO/home"

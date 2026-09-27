@@ -165,6 +165,28 @@ type Unit struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
+type UnitIssue struct {
+	ID              string       `json:"id"`
+	UnitID          string       `json:"unit_id"`
+	Repo            string       `json:"repo"`
+	Number          int64        `json:"number"`
+	Url             string       `json:"url"`
+	Title           string       `json:"title"`
+	State           string       `json:"state"`
+	Author          string       `json:"author"`
+	Labels          string       `json:"labels"`
+	Body            string       `json:"body"`
+	Comments        string       `json:"comments"`
+	Public          bool         `json:"public"`
+	Closes          bool         `json:"closes"`
+	IssueUpdatedAt  sql.NullTime `json:"issue_updated_at"`
+	FetchedAt       sql.NullTime `json:"fetched_at"`
+	Suggestion      string       `json:"suggestion"`
+	SuggestionState string       `json:"suggestion_state"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
+}
+
 type UnitRepo struct {
 	UnitID       string       `json:"unit_id"`
 	RepoID       string       `json:"repo_id"`

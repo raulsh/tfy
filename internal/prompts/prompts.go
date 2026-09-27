@@ -21,6 +21,7 @@ var files embed.FS
 
 var tmpl = template.Must(template.New("").Funcs(template.FuncMap{
 	"trim": strings.TrimSpace,
+	"join": strings.Join,
 }).ParseFS(files, "*.tmpl"))
 
 // Render executes the named template ("define", "plan", …).
@@ -87,6 +88,29 @@ type Feedback struct {
 	Text    string
 }
 
+// Issue is a GitHub issue linked to a unit, as tfy last read it.
+type Issue struct {
+	Ref      string // owner/repo#12
+	URL      string
+	Title    string
+	State    string
+	Author   string
+	Labels   []string
+	Body     string
+	Comments []IssueNote
+	// File is where the workspace holds its full text (docs/issues/…).
+	File string
+	// Closes is set when the unit's pull requests close the issue on merge.
+	Closes bool
+}
+
+// IssueNote is a comment on an issue.
+type IssueNote struct {
+	Author string
+	At     string
+	Body   string
+}
+
 // Criterion is an acceptance criterion from the spec.
 type Criterion struct {
 	ID   string `json:"id"`
@@ -109,6 +133,7 @@ type Define struct {
 	Title          string
 	Description    string
 	Feedback       []Feedback
+	Issues         []Issue
 	Revision       string // reviewer feedback when iterating
 	EditedByUser   bool
 }
@@ -118,6 +143,7 @@ type Plan struct {
 	Label        string
 	Title        string
 	Repos        []Repo
+	Issues       []Issue
 	Revision     string
 	EditedByUser bool
 }
@@ -130,6 +156,7 @@ type Develop struct {
 	Targets         []Repo
 	Criteria        []Criterion
 	NewDependencies []string
+	Issues          []Issue
 	Findings        string // review findings when iterating
 }
 
@@ -226,4 +253,21 @@ type Learn struct {
 	Comments  []LearnNote
 	Denials   []string
 	FollowUps []string
+}
+
+// IssueCheck is the data for issue.tmpl: a linked issue, and what tfy has
+// gathered that the issue might not say yet.
+type IssueCheck struct {
+	Label  string
+	Title  string
+	Issue  Issue
+	Public bool
+	// Feedback are the user reports from Slack behind the unit.
+	Feedback            []Feedback
+	Requirement         string
+	RequirementApproved bool
+	Spec                string
+	SpecApproved        bool
+	PRs                 []string
+	ReleaseNotes        string
 }
