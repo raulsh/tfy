@@ -108,24 +108,16 @@ function Wordmark({ collapsed }: { collapsed: boolean }) {
 	return (
 		<span
 			style={{
-				display: "inline-flex",
-				alignItems: "center",
-				gap: 8,
-				fontWeight: 600,
-				fontSize: 15,
-				letterSpacing: -0.2,
+				display: "inline-block",
+				lineHeight: "22px",
+				fontFamily: "var(--tf-brand)",
+				fontWeight: 700,
+				fontSize: 20,
+				letterSpacing: -0.3,
+				color: "var(--tf-wordmark)",
 			}}
 		>
-			<svg width="22" height="22" viewBox="0 0 32 32" role="img">
-				<title>tfy</title>
-				<rect width="32" height="32" rx="7" fill="var(--tf-text)" />
-				<path d="M8 23V13l5 3v-3l5 3v-3l6 3.5V23z" fill="#7FB4FA" />
-			</svg>
-			{!collapsed && (
-				<span>
-					t<span style={{ color: "var(--tf-accent)" }}>f</span>y
-				</span>
-			)}
+			{collapsed ? "tf" : "thefactory"}
 		</span>
 	);
 }

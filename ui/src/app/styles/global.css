@@ -12,6 +12,7 @@
 	--tf-selected: #f0f6fe;
 	--tf-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
 	--tf-offset-shadow: 3px 3px 0 #101828;
+	--tf-wordmark: #101828;
 	color-scheme: light;
 }
 
@@ -28,6 +29,7 @@
 	--tf-selected: #04316c;
 	--tf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 	--tf-offset-shadow: 3px 3px 0 #000000;
+	--tf-wordmark: #ffffff;
 	color-scheme: dark;
 }
 
@@ -40,6 +42,16 @@
 	--tf-neutral: #98a2b3;
 	--tf-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 	--tf-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+	--tf-brand: "Switzer", var(--tf-sans);
+}
+
+/* Switzer, from Fontshare, for the wordmark only. */
+@font-face {
+	font-family: "Switzer";
+	src: url("./fonts/switzer-700.woff2") format("woff2");
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
 }
 
 * {
