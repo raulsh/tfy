@@ -11,7 +11,7 @@ tfy takes units of work from feedback to merged pull requests by driving the Cla
 ## Commands
 
 - `make build`: the UI, then `bin/tfy` with the UI embedded.
-- `make test`: `go test -race ./...`, `tsc --noEmit` and Biome. The pipeline tests take about 100s under `-race`.
+- `make test`: `go test -race ./...`, `tsc --noEmit` and Biome. The pipeline tests take about 15s under `-race`: the fake tools set `GORACE=atexit_sleep_ms=0`, or each call would cost a second.
 - `make lint`: gofmt, go vet and Biome. Fix UI formatting with `pnpm -C ui exec biome check --write .`.
 - `make generate`: sqlc, after editing `internal/store/queries` (sqlc lives in `~/go/bin`).
 - `make demo`: the whole pipeline against fake `claude`, `gh` and `slk` on port 7430.

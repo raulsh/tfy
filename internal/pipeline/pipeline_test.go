@@ -640,8 +640,9 @@ func wrapper(t *testing.T, dir, tool string) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "fake-"+tool)
-	// Agent runs get a scrubbed environment: bake the control dir in.
-	script := fmt.Sprintf("#!/bin/sh\nFAKE_TOOL=%s FAKE_CONTROL=%q exec %q \"$@\"\n", tool, filepath.Join(dir, "control"), self)
+	// Agent runs get a scrubbed environment: bake the control dir in. Under
+	// -race a process sleeps a second before it exits, unless told not to.
+	script := fmt.Sprintf("#!/bin/sh\nGORACE=atexit_sleep_ms=0 FAKE_TOOL=%s FAKE_CONTROL=%q exec %q \"$@\"\n", tool, filepath.Join(dir, "control"), self)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
