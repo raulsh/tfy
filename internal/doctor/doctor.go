@@ -6,10 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -49,7 +47,7 @@ func Run(ctx context.Context, cfg config.Config, paths config.Paths, opts Option
 		dataDirCheck(paths),
 	}
 	if opts.CheckPort {
-		checks = append(checks, portCheck(cfg.Port))
+		checks = append(checks, portCheck(cfg))
 	}
 	return checks
 }
@@ -165,14 +163,14 @@ func dataDirCheck(paths config.Paths) Check {
 	return c
 }
 
-func portCheck(port int) Check {
+func portCheck(cfg config.Config) Check {
 	c := Check{Name: "port"}
-	l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	l, err := cfg.Listen()
 	if err != nil {
-		c.Status, c.Detail, c.Fix = Warn, fmt.Sprintf("127.0.0.1:%d is in use (is tfy already running?)", port), "pick another port with --port"
+		c.Status, c.Detail, c.Fix = Warn, fmt.Sprintf("%s is in use (is tfy already running?)", cfg.Addr()), "pick another port with --port"
 		return c
 	}
 	l.Close()
-	c.Status, c.Detail = OK, fmt.Sprintf("127.0.0.1:%d is free", port)
+	c.Status, c.Detail = OK, cfg.Addr()+" is free"
 	return c
 }

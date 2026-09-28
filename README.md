@@ -22,7 +22,7 @@ tfy, short for thefactory, takes a **unit** of work (a feature, bug fix, improve
 
   You can also pick messages in the Inbox and turn them into a unit yourself.
 
-It runs locally. `tfy serve` is the backend and serves the UI on `127.0.0.1`.
+It runs locally. `tfy serve` is the backend and serves the UI on `127.0.0.1`; `tfy serve --host 0.0.0.0` (or `host: 0.0.0.0` in `~/.tfy/config.yaml`) serves it to your private network too.
 
 ## Requirements
 
@@ -113,7 +113,7 @@ Each Claude run gets only what its stage needs, and several layers stop it from 
   | review, retrospective | `dontAsk` | read-only commands |
 
 - **Two human gates.** No code is written until you approve a spec, and nothing merges until you do.
-- **Local-only server.** It binds to 127.0.0.1, checks `Host` (against DNS rebinding) and `Origin`, and requires a per-install token.
+- **Local server.** It binds to 127.0.0.1 unless you choose another `host`, checks `Host` (against DNS rebinding) and `Origin`, and requires a per-install token. Served to the network, it admits IP addresses and this machine's name as `Host`, and talks plain HTTP: the printed link is the only key, so use it only on networks you trust.
 
 `docs/spike.md` records how the Claude Code CLI behaved when all of this was checked.
 

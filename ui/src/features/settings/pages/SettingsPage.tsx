@@ -117,7 +117,7 @@ export default function SettingsPage() {
 									rows={[
 										["Config file", <Mono key="f">{config.data.config_file}</Mono>],
 										["Data directory", <Mono key="d">{config.data.data_dir}</Mono>],
-										["Port", config.data.port],
+										["Address", <Mono key="a">{`${config.data.host}:${config.data.port}`}</Mono>],
 										["Concurrent runs", config.data.max_concurrent_runs],
 										["PR poll interval", config.data.pr_poll_interval],
 										["Version", config.data.version],

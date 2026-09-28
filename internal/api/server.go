@@ -6,11 +6,13 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
-	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/url"
+	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,19 +50,29 @@ type Options struct {
 // Server holds the handlers' dependencies.
 type Server struct {
 	Options
-	allowedHosts   []string
+	// hostNames are the names a Host header may carry; anyIP also admits
+	// every IP address, when tfy serves the network.
+	hostNames      []string
+	anyIP          bool
 	allowedOrigins []string
 }
 
 // New builds the Fiber app.
 func New(o Options) *fiber.App {
 	s := &Server{Options: o}
-	for _, h := range []string{"127.0.0.1", "localhost", "[::1]"} {
-		host := fmt.Sprintf("%s:%d", h, o.Config.Port)
-		s.allowedHosts = append(s.allowedHosts, host)
-		s.allowedOrigins = append(s.allowedOrigins, "http://"+host)
+	for _, h := range []string{"127.0.0.1", "localhost", "::1"} {
+		s.hostNames = append(s.hostNames, h)
+		s.allowedOrigins = append(s.allowedOrigins, "http://"+net.JoinHostPort(h, strconv.Itoa(o.Config.Port)))
 	}
+	s.hostNames = append(s.hostNames, strings.ToLower(o.Config.Host))
 	s.allowedOrigins = append(s.allowedOrigins, o.DevOrigins...)
+	if !o.Config.LoopbackOnly() {
+		s.anyIP = true
+		if name, err := os.Hostname(); err == nil && name != "" {
+			name = strings.ToLower(name)
+			s.hostNames = append(s.hostNames, name, name+".local")
+		}
+	}
 
 	app := fiber.New(fiber.Config{
 		AppName:      "tfy",
@@ -84,11 +96,22 @@ func New(o Options) *fiber.App {
 // hostGuard rejects requests whose Host is not this machine: a DNS-rebinding
 // page on another origin cannot reach the API through its own hostname.
 func (s *Server) hostGuard(c fiber.Ctx) error {
-	host := c.Host()
-	if slices.Contains(s.allowedHosts, host) {
+	if s.hostAllowed(c.Host()) {
 		return c.Next()
 	}
 	return fiber.NewError(fiber.StatusForbidden, "unexpected Host header")
+}
+
+// hostAllowed reports whether a Host header names this server. An IP
+// address is safe to admit on the network: DNS rebinding needs a name the
+// attacker controls, and the browser sends that name.
+func (s *Server) hostAllowed(host string) bool {
+	name, port, err := net.SplitHostPort(host)
+	if err != nil || port != strconv.Itoa(s.Config.Port) {
+		return false
+	}
+	name = strings.ToLower(name)
+	return slices.Contains(s.hostNames, name) || (s.anyIP && net.ParseIP(name) != nil)
 }
 
 // originGuard rejects state-changing requests from other browser origins.
@@ -97,8 +120,9 @@ func (s *Server) originGuard(c fiber.Ctx) error {
 	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:
 		return c.Next()
 	}
+	// hostGuard has vetted the Host, so a page served from it is tfy's own.
 	origin := c.Get(fiber.HeaderOrigin)
-	if origin == "" || slices.Contains(s.allowedOrigins, origin) {
+	if origin == "" || origin == "http://"+c.Host() || slices.Contains(s.allowedOrigins, origin) {
 		return c.Next()
 	}
 	return fiber.NewError(fiber.StatusForbidden, "cross-origin request refused")

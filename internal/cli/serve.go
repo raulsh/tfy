@@ -37,6 +37,7 @@ import (
 )
 
 type serveOpts struct {
+	host    string
 	port    int
 	open    bool
 	dev     bool
@@ -47,12 +48,13 @@ func newServeCmd() *cobra.Command {
 	var o serveOpts
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Run tfy and serve its UI on 127.0.0.1",
+		Short: "Run tfy and serve its UI (on 127.0.0.1 unless --host says otherwise)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServe(cmd.Context(), o)
 		},
 	}
+	cmd.Flags().StringVar(&o.host, "host", "", "address to listen on (default from config, 127.0.0.1); 0.0.0.0 serves the local network")
 	cmd.Flags().IntVar(&o.port, "port", 0, "port to listen on (default from config, 7420)")
 	cmd.Flags().BoolVar(&o.open, "open", false, "open the UI in a browser")
 	cmd.Flags().BoolVar(&o.dev, "dev", false, "allow the Vite dev server (localhost:5174) to call the API")
@@ -75,8 +77,14 @@ func runServe(ctx context.Context, o serveOpts) error {
 	if err != nil {
 		return err
 	}
+	if o.host != "" {
+		cfg.Host = o.host
+	}
 	if o.port != 0 {
 		cfg.Port = o.port
+	}
+	if err := cfg.CheckHost(); err != nil {
+		return err
 	}
 	if err := migrateLegacyHome(ctx, paths); err != nil {
 		return err
@@ -161,16 +169,22 @@ func runServe(ctx context.Context, o serveOpts) error {
 		Version: version, DevOrigins: devOrigins, UI: web.FS(), Log: log.With("component", "api"),
 	})
 
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port))
-	ln, err := net.Listen("tcp4", addr)
+	ln, err := cfg.Listen()
 	if err != nil {
 		stopWork()
-		return fmt.Errorf("listen on %s: %w", addr, err)
+		return fmt.Errorf("listen on %s: %w", cfg.Addr(), err)
 	}
-	link := fmt.Sprintf("http://127.0.0.1:%d/?token=%s", cfg.Port, token)
-	fmt.Fprintf(os.Stderr, "\n  tfy is running\n\n  open  %s\n  data  %s\n\n", link, paths.Root)
+	if !cfg.LoopbackOnly() {
+		log.Warn("tfy is reachable from the network over plain HTTP: anyone with the link can drive it, so share it only on networks you trust", "addr", cfg.Addr())
+	}
+	local, lan := serveLinks(cfg, token)
+	fmt.Fprintf(os.Stderr, "\n  tfy is running\n\n  open  %s\n", local)
+	if lan != "" {
+		fmt.Fprintf(os.Stderr, "  lan   %s\n", lan)
+	}
+	fmt.Fprintf(os.Stderr, "  data  %s\n\n", paths.Root)
 	if o.open {
-		go openBrowser(link)
+		go openBrowser(local)
 	}
 
 	serveErr := make(chan error, 1)
@@ -196,6 +210,27 @@ func runServe(ctx context.Context, o serveOpts) error {
 		log.Warn("gave up waiting for running work to stop")
 	}
 	return nil
+}
+
+// serveLinks returns the link that opens tfy on this machine and, when it
+// listens on every interface, the one for other machines on the network.
+func serveLinks(cfg config.Config, token string) (local, lan string) {
+	link := func(host string) string {
+		return "http://" + net.JoinHostPort(host, strconv.Itoa(cfg.Port)) + "/?token=" + token
+	}
+	if ip := net.ParseIP(cfg.Host); ip == nil || !ip.IsUnspecified() {
+		return link(cfg.Host), ""
+	}
+	// Dialing UDP sends nothing; it only picks the address the default
+	// route leaves by, which skips container bridges.
+	if c, err := net.Dial("udp4", "192.0.2.1:9"); err == nil {
+		ip := c.LocalAddr().(*net.UDPAddr).IP
+		c.Close()
+		if !ip.IsLoopback() {
+			lan = link(ip.String())
+		}
+	}
+	return link("127.0.0.1"), lan
 }
 
 // migrateLegacyHome moves the data directory thefactory used (~/.thefactory)

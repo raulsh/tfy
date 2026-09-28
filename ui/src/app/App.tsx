@@ -200,7 +200,7 @@ function PasteLink({ onSignedIn }: { onSignedIn: () => void }) {
 		<div style={{ maxWidth: 460, margin: "12px auto 0" }}>
 			<Space.Compact style={{ width: "100%" }}>
 				<Input
-					placeholder="http://127.0.0.1:7420/?token=…"
+					placeholder={`${window.location.origin}/?token=…`}
 					value={value}
 					onChange={(e) => {
 						setValue(e.target.value);

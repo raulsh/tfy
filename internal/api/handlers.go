@@ -81,6 +81,7 @@ func (s *Server) configView(c fiber.Ctx) error {
 		stages[kind] = stageView{st.Model, st.Effort, st.Budget, st.Timeout.String()}
 	}
 	return ok(c, map[string]any{
+		"host":                s.Config.Host,
 		"port":                s.Config.Port,
 		"max_concurrent_runs": s.Config.MaxConcurrentRuns,
 		"stages":              stages,

@@ -327,6 +327,7 @@ export interface StageConfig {
 }
 
 export interface ConfigView {
+	host: string;
 	port: number;
 	max_concurrent_runs: number;
 	stages: Record<string, StageConfig>;

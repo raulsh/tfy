@@ -4,8 +4,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -21,6 +23,9 @@ type Stage struct {
 
 // Config is ~/.tfy/config.yaml.
 type Config struct {
+	// Host is the address `tfy serve` listens on: 127.0.0.1 keeps tfy on
+	// this machine, 0.0.0.0 serves the local network.
+	Host              string           `yaml:"host"`
 	Port              int              `yaml:"port"`
 	MaxConcurrentRuns int              `yaml:"max_concurrent_runs"`
 	Stages            map[string]Stage `yaml:"stages"`
@@ -41,6 +46,7 @@ type Config struct {
 // Default returns the configuration used when no file exists.
 func Default() Config {
 	return Config{
+		Host:              "127.0.0.1",
 		Port:              7420,
 		MaxConcurrentRuns: 2,
 		PRPollInterval:    time.Minute,
@@ -100,6 +106,9 @@ func Load(p Paths) (Config, error) {
 		}
 	}
 	def := Default()
+	if cfg.Host == "" {
+		cfg.Host = def.Host
+	}
 	if cfg.Port == 0 {
 		cfg.Port = def.Port
 	}
@@ -130,6 +139,36 @@ func Load(p Paths) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// CheckHost reports whether Host is an address tfy can listen on.
+func (c Config) CheckHost() error {
+	if c.Host != "localhost" && net.ParseIP(c.Host) == nil {
+		return fmt.Errorf("host %q: use an IP address, such as 127.0.0.1 or 0.0.0.0", c.Host)
+	}
+	return nil
+}
+
+// Addr is the address `tfy serve` listens on.
+func (c Config) Addr() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
+
+// LoopbackOnly reports whether Host keeps tfy on this machine.
+func (c Config) LoopbackOnly() bool {
+	if c.Host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(c.Host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// Listen opens the listener `tfy serve` uses: IPv4 only for an IPv4 Host,
+// so 0.0.0.0 means what it says.
+func (c Config) Listen() (net.Listener, error) {
+	network := "tcp"
+	if ip := net.ParseIP(c.Host); c.Host == "localhost" || ip.To4() != nil {
+		network = "tcp4"
+	}
+	return net.Listen(network, c.Addr())
 }
 
 // Save writes cfg to the config file.
