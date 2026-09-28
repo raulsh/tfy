@@ -175,5 +175,5 @@ func (s *Server) unitFromFeedback(c fiber.Ctx) error {
 		return err
 	}
 	busy := s.Pipeline.Busy(c.Context(), u.ID)
-	return created(c, unitView(u, busy, pipeline.AvailableActions(u, busy), ""))
+	return created(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
 }

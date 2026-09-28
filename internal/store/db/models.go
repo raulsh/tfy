@@ -163,7 +163,8 @@ type Unit struct {
 	CreatedBy       string         `json:"created_by"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
-	MergeStep       int64          `json:"merge_step"`
+	MergeRound      int64          `json:"merge_round"`
+	MergeAdmin      bool           `json:"merge_admin"`
 }
 
 type UnitIssue struct {

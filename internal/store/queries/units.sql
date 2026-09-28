@@ -22,7 +22,11 @@ SELECT * FROM units WHERE state IN (sqlc.slice('states')) ORDER BY updated_at;
 
 -- name: TransitionUnit :execrows
 -- Conditional on the current state, so concurrent actions cannot both apply.
-UPDATE units SET state = @to_state, attention = '', attention_detail = '', updated_at = @now
+-- The merge run's decisions count only while it drives a merge, and a
+-- person's choice to merge as an administrator holds for that merge only:
+-- moving out of its states (keep_merge 0) resets both.
+UPDATE units SET state = @to_state, attention = '', attention_detail = '',
+    merge_round = merge_round * @keep_merge, merge_admin = merge_admin * @keep_merge, updated_at = @now
 WHERE id = @id AND state = @from_state;
 
 -- name: SetUnitAttention :exec
@@ -40,5 +44,8 @@ UPDATE units SET updated_at = @now WHERE id = @id;
 -- name: ListChildUnits :many
 SELECT * FROM units WHERE parent_unit_id = @parent_unit_id ORDER BY seq;
 
--- name: SetUnitMergeStep :exec
-UPDATE units SET merge_step = @merge_step, updated_at = @now WHERE id = @id;
+-- name: SetUnitMergeRound :exec
+UPDATE units SET merge_round = @merge_round, updated_at = @now WHERE id = @id;
+
+-- name: SetUnitMergeAdmin :exec
+UPDATE units SET merge_admin = @merge_admin, updated_at = @now WHERE id = @id;

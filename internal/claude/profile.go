@@ -55,6 +55,18 @@ var Profiles = map[string]Profile{
 		MaxDenials:     40,
 		Persist:        true,
 	},
+	// merge decides how a unit's approved pull requests merge, one step at
+	// a time, and may update them between merges. tfy carries out each
+	// decision: the run itself can neither merge nor push.
+	"merge": {
+		Name:           "merge",
+		Tools:          []string{"Bash", "Read", "Write", "Edit"},
+		PermissionMode: ModeAuto,
+		Guarded:        true,
+		ForbidPush:     true,
+		MaxDenials:     40,
+		Persist:        true,
+	},
 	"review": {
 		Name:           "review",
 		Tools:          []string{"Bash", "Read"},

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,7 +95,7 @@ func New(d Deps) *Pipeline {
 	d.Jobs.Register(JobDevelop, jobs.Kind{Handler: p.unitJob(p.develop), Claude: true, SideEffects: true})
 	d.Jobs.Register(JobPublish, jobs.Kind{Handler: p.unitJob(p.publish), SideEffects: true})
 	d.Jobs.Register(JobReview, jobs.Kind{Handler: p.unitJob(p.review), Claude: true})
-	d.Jobs.Register(JobMerge, jobs.Kind{Handler: p.unitJob(p.merge), SideEffects: true})
+	d.Jobs.Register(JobMerge, jobs.Kind{Handler: p.unitJob(p.merge), Claude: true, SideEffects: true})
 	d.Jobs.Register(JobCleanup, jobs.Kind{Handler: p.unitJob(p.cleanup), SideEffects: true})
 	d.Jobs.Register(JobTriage, jobs.Kind{Handler: p.triage, Claude: true})
 	d.Jobs.Register(JobRelease, jobs.Kind{Handler: p.unitJob(p.release), Claude: true})
@@ -170,7 +171,11 @@ func (p *Pipeline) transition(ctx context.Context, u db.Unit, to domain.State, a
 		return u, &ConflictError{Msg: (&domain.TransitionError{From: from, To: to}).Error()}
 	}
 	ctx = context.WithoutCancel(ctx)
-	n, err := p.Store.Q.TransitionUnit(ctx, db.TransitionUnitParams{ToState: string(to), Now: store.Now(), ID: u.ID, FromState: string(from)})
+	var keep int64
+	if slices.Contains(mergeRunStates, to) {
+		keep = 1
+	}
+	n, err := p.Store.Q.TransitionUnit(ctx, db.TransitionUnitParams{ToState: string(to), KeepMerge: keep, Now: store.Now(), ID: u.ID, FromState: string(from)})
 	if err != nil {
 		return u, err
 	}

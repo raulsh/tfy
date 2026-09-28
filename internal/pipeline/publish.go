@@ -32,10 +32,13 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 	if err != nil {
 		return err
 	}
-	if updating && p.unchangedSinceReview(ctx, targets) {
-		// The step's update needed no change: what was reviewed stands.
-		_, err := p.transition(ctx, u, domain.StateAwaitingMerge, "system", fmt.Sprintf("merge step %d needed no change; ready to merge", u.MergeStep+1))
-		return err
+	if updating && len(targets) == 0 {
+		// The merge run's update is gone from the checkouts: what was
+		// approved stands, and merging goes on.
+		if u, err = p.transition(ctx, u, domain.StateMerging, "system", "the update left nothing to publish"); err != nil {
+			return err
+		}
+		return p.enqueue(ctx, JobMerge, u, mergePayload{Notes: []string{"Your update left no commit to publish, so nothing changed."}})
 	}
 
 	var published []db.ListUnitReposRow
@@ -117,15 +120,12 @@ func (p *Pipeline) prSiblings(ctx context.Context, u db.Unit) []db.ListUnitRepos
 }
 
 // activeTargets are the target repositories a round works on: those whose
-// pull requests are not merged, or, while a merge step's update is under
-// way, that step's open ones. updating tells which.
+// pull requests are not merged, or, while the merge run drives a merge, the
+// open ones it updated. updating tells which.
 func (p *Pipeline) activeTargets(ctx context.Context, u db.Unit) ([]db.ListUnitReposRow, bool, error) {
-	steps, urs, err := p.unitSteps(ctx, u)
+	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
 	if err != nil {
 		return nil, false, err
-	}
-	if u.MergeStep > 0 {
-		return openRepos(currentStep(u, steps)), true, nil
 	}
 	var open []db.ListUnitReposRow
 	for _, ur := range targetsOf(urs) {
@@ -133,19 +133,17 @@ func (p *Pipeline) activeTargets(ctx context.Context, u db.Unit) ([]db.ListUnitR
 			open = append(open, ur)
 		}
 	}
-	return open, false, nil
-}
-
-// unchangedSinceReview reports whether no repository has commits the last
-// review did not see.
-func (p *Pipeline) unchangedSinceReview(ctx context.Context, urs []db.ListUnitReposRow) bool {
-	for _, ur := range urs {
-		head, err := p.Git.RevParse(ctx, ur.CheckoutPath, "HEAD")
-		if dirty, _ := p.Git.Dirty(ctx, ur.CheckoutPath); err != nil || dirty || ur.ReviewedSha == "" || head != ur.ReviewedSha {
-			return false
+	if u.MergeRound > 0 {
+		var withPR []db.ListUnitReposRow
+		for _, ur := range open {
+			if ur.PrNumber > 0 {
+				withPR = append(withPR, ur)
+			}
 		}
+		updated, err := p.updatedTargets(ctx, u, withPR)
+		return updated, true, err
 	}
-	return true
+	return open, false, nil
 }
 
 // push publishes the checkout's HEAD with the user's credentials: through

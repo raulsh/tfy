@@ -269,6 +269,18 @@ export function AttentionBanner({ unit }: { unit: Unit }) {
 					Got it
 				</Button>
 			)}
+			{(unit.actions ?? []).includes("back-to-merge") && (
+				<Tooltip title="The last review approved the pull requests as they are now: merge them without another review">
+					<Button
+						size="small"
+						icon={<Undo2 size={14} />}
+						loading={act.isPending}
+						onClick={() => act.mutate({ action: "back-to-merge" }, { onError: (e) => message.error(e.message) })}
+					>
+						Back to merge
+					</Button>
+				</Tooltip>
+			)}
 			{(unit.actions ?? []).includes("retry") && unit.attention && (
 				<Button
 					size="small"
@@ -291,22 +303,10 @@ function waitingText(u: Unit): string {
 			return "Read the requirement. Mark it ready to start planning, edit it, or ask Claude for a revision.";
 		case "spec_review":
 			return "Read the spec. Approve it to start development, edit it, or ask Claude for a revision.";
-		case "releasing": {
-			const plan = "merge_plan" in u ? (u as UnitDetail).merge_plan : undefined;
-			if (plan && plan.current < plan.steps.length - 1) {
-				const next = plan.steps[plan.current + 1];
-				const until =
-					next.wait_for === "released"
-						? "CI is green on its merge commits"
-						: next.wait_for === "tagged"
-							? "a tag contains its merge commits"
-							: "it is merged";
-				return `Step ${plan.current + 1} of ${plan.steps.length} is merged. tfy waits until ${until}, then prepares step ${plan.current + 2}. Continue to go on without waiting.`;
-			}
+		case "releasing":
 			return "Merged. tfy is writing the release notes and following CI on the merge commits.";
-		}
 		case "awaiting_merge":
-			return "The review approved the change. Merge it from here (tfy checks nothing changed since the review), or on GitHub.";
+			return "The review approved the change. Merge it from here: a merge run decides the order and moves pins to what merged, and tfy checks each pull request before merging it. Or merge on GitHub.";
 		default:
 			return "";
 	}
@@ -321,6 +321,7 @@ const actionLabels: Partial<Record<UnitAction, string>> = {
 	refresh: "Refresh PRs",
 	merge: "Merge",
 	rereview: "Review again",
+	"back-to-merge": "Back to merge",
 	"override-approve": "Approve anyway",
 	"revise-spec": "Revise spec",
 	reopen: "Reopen",
@@ -336,7 +337,7 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 	const [iterateOpen, setIterateOpen] = useState(false);
 	const [feedback, setFeedback] = useState("");
 	const [closePRs, setClosePRs] = useState(true);
-	const run = (action: UnitAction, extra?: { feedback?: string; closePRs?: boolean }) =>
+	const run = (action: UnitAction, extra?: { feedback?: string; closePRs?: boolean; admin?: boolean }) =>
 		act.mutate(
 			{ action, ...extra },
 			{
@@ -347,27 +348,27 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 	const has = (a: UnitAction) => (unit.actions ?? []).includes(a);
 	const busy = (a: UnitAction) => act.isPending && act.variables?.action === a;
 	const primary: UnitAction | undefined = (
-		["accept", "mark-ready", "approve-spec", "merge", "reopen"] as UnitAction[]
+		["accept", "mark-ready", "approve-spec", "merge", "back-to-merge", "reopen"] as UnitAction[]
 	).find(has);
 	const repos = "repos" in unit ? unit.repos : [];
-	// With a merge plan, merging covers the current step only.
-	const plan = "merge_plan" in unit ? unit.merge_plan : undefined;
-	const stepped = !!plan && plan.steps.length > 1;
-	const stepRepos = stepped ? plan.steps[plan.current].repos : undefined;
-	const openPRs = repos.filter(
-		(r) => r.pr_number && r.pr_state === "open" && (!stepRepos || stepRepos.includes(r.full_name)),
-	);
-	const stepLabel = stepped ? `step ${plan.current + 1} of ${plan.steps.length}` : "";
-	const hasNextStep = stepped && plan.current < plan.steps.length - 1;
-	const reviewing = unit.state === "reviewing";
+	const openPRs = repos.filter((r) => r.pr_number && r.pr_state === "open");
+	// After the pull requests are open, iterating sends the work back to
+	// development: with a blocked review's findings, or with what a person
+	// asks for.
+	const onPRs = unit.state === "reviewing" || unit.state === "awaiting_merge";
+	const blocked = unit.attention === "review_blocked";
 
-	const confirmMerge = () =>
+	const confirmMerge = () => {
+		// Ticked already when GitHub's rules just refused the merge.
+		let admin = unit.attention === "branch_rules";
 		modal.confirm({
-			title: stepped ? `Merge ${stepLabel}?` : "Merge the pull requests?",
+			title: "Merge the pull requests?",
 			content: (
 				<div>
 					<p className="muted">
-						tfy checks each one first: unchanged since the review, no conflicts. Then it merges them all.
+						A merge run decides the order: all at once, or one repository before the ones that depend on it, moving
+						their pins to what merged. Updates are reviewed first. tfy checks each pull request before merging it:
+						unchanged since the review, green, no conflicts.
 					</p>
 					<ul style={{ paddingLeft: 18 }}>
 						{openPRs.map((r) => (
@@ -376,11 +377,24 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 							</li>
 						))}
 					</ul>
+					<Checkbox
+						defaultChecked={admin}
+						onChange={(e) => {
+							admin = e.target.checked;
+						}}
+					>
+						Merge as an administrator
+					</Checkbox>
+					<div className="faint" style={{ fontSize: 12, marginLeft: 24 }}>
+						Bypasses the base branches' rules, such as required approvals, and doesn't wait for checks still running (gh
+						pr merge --admin). Needs admin rights on the repositories.
+					</div>
 				</div>
 			),
 			okText: "Merge",
-			onOk: () => run("merge"),
+			onOk: () => run("merge", { admin }),
 		});
+	};
 
 	return (
 		<Space size={6} wrap>
@@ -416,24 +430,15 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 					Revise spec
 				</Button>
 			)}
-			{has("mark-released") &&
-				(hasNextStep ? (
-					<Popconfirm
-						title={`Go on to step ${plan.current + 2} now?`}
-						description="tfy stops waiting for this step's CI or tag."
-						onConfirm={() => run("mark-released")}
-					>
-						<Button size={size}>Continue to step {plan.current + 2}</Button>
-					</Popconfirm>
-				) : (
-					<Popconfirm
-						title="Mark this unit released?"
-						description="CI is not watched any further."
-						onConfirm={() => run("mark-released")}
-					>
-						<Button size={size}>Mark released</Button>
-					</Popconfirm>
-				))}
+			{has("mark-released") && (
+				<Popconfirm
+					title="Mark this unit released?"
+					description="CI is not watched any further."
+					onConfirm={() => run("mark-released")}
+				>
+					<Button size={size}>Mark released</Button>
+				</Popconfirm>
+			)}
 			{has("suggest-conventions") && (
 				<Tooltip title="A retrospective of this unit: it may propose changes to the repositories' CLAUDE.md, rules or hooks, as a new unit">
 					<Button size={size} onClick={() => run("suggest-conventions")} loading={busy("suggest-conventions")}>
@@ -442,9 +447,15 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 				</Tooltip>
 			)}
 			{has("rereview") && (
-				<Button size={size} onClick={() => run("rereview")} loading={busy("rereview")}>
-					Review again
-				</Button>
+				<Popconfirm
+					title="Review the pull requests again?"
+					description="A new review run starts, and merging waits for its verdict. If you cancel it, Back to merge undoes this."
+					onConfirm={() => run("rereview")}
+				>
+					<Button size={size} loading={busy("rereview")}>
+						Review again
+					</Button>
+				</Popconfirm>
 			)}
 			{has("override-approve") && (
 				<Popconfirm
@@ -457,7 +468,7 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 			)}
 			{has("iterate") && (
 				<Button size={size} onClick={() => setIterateOpen(true)}>
-					{reviewing ? "Iterate anyway" : "Request changes"}
+					{blocked ? "Iterate anyway" : "Request changes"}
 				</Button>
 			)}
 			{has("reject") && (
@@ -489,31 +500,41 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 					title={
 						primary === "approve-spec"
 							? "Starts development: Claude implements the spec, tfy opens the pull requests and reviews them"
-							: undefined
+							: primary === "back-to-merge"
+								? "The last review approved the pull requests as they are now: merge them without another review"
+								: undefined
 					}
 				>
 					<Button
 						size={size}
 						type="primary"
-						icon={primary === "merge" ? <GitMerge size={14} /> : undefined}
+						icon={
+							primary === "merge" ? (
+								<GitMerge size={14} />
+							) : primary === "back-to-merge" ? (
+								<Undo2 size={14} />
+							) : undefined
+						}
 						loading={busy(primary)}
 						onClick={() => (primary === "merge" ? confirmMerge() : run(primary))}
 					>
-						{primary === "merge" && stepped ? `Merge ${stepLabel}` : actionLabels[primary]}
+						{actionLabels[primary]}
 					</Button>
 				</Tooltip>
 			)}
 			<Modal
 				title={
-					reviewing
+					blocked
 						? "Another development round"
-						: unit.state === "spec_review"
-							? "Revise the spec"
-							: "Revise the requirement"
+						: onPRs
+							? "Request changes"
+							: unit.state === "spec_review"
+								? "Revise the spec"
+								: "Revise the requirement"
 				}
 				open={iterateOpen}
-				okText={reviewing ? "Send back to development" : "Request revision"}
-				okButtonProps={{ disabled: !reviewing && !feedback.trim(), loading: act.isPending }}
+				okText={onPRs ? "Send back to development" : "Request revision"}
+				okButtonProps={{ disabled: !blocked && !feedback.trim(), loading: act.isPending }}
 				onCancel={() => setIterateOpen(false)}
 				onOk={() =>
 					act.mutate(
@@ -522,7 +543,13 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 							onSuccess: () => {
 								setIterateOpen(false);
 								setFeedback("");
-								message.success(reviewing ? "Claude is addressing the review" : "Claude is revising it");
+								message.success(
+									blocked
+										? "Claude is addressing the review"
+										: onPRs
+											? "Claude is making the changes"
+											: "Claude is revising it",
+								);
 							},
 							onError: (e) => message.error(e.message),
 						},
@@ -530,16 +557,24 @@ export function UnitActions({ unit, size = "middle" }: { unit: UnitDetail | Unit
 				}
 			>
 				<p className="muted" style={{ marginTop: 0 }}>
-					{reviewing
+					{blocked
 						? "Claude resumes the development session with the review's findings. Add anything else it should fix."
-						: "Claude resumes its session with your feedback and edits the document in place."}
+						: onPRs
+							? "Claude resumes the development session with your request, even where it goes beyond the spec. tfy pushes the changes to the pull requests and reviews them again, knowing you asked for them."
+							: "Claude resumes its session with your feedback and edits the document in place."}
 				</p>
 				<Input.TextArea
 					autoFocus
 					value={feedback}
 					onChange={(e) => setFeedback(e.target.value)}
 					autoSize={{ minRows: 5, maxRows: 14 }}
-					placeholder={reviewing ? "Optional: more to fix" : "What should change?"}
+					placeholder={
+						blocked
+							? "Optional: more to fix"
+							: onPRs
+								? "What should change? Paste comments from the pull requests if they say it."
+								: "What should change?"
+					}
 				/>
 			</Modal>
 		</Space>

@@ -19,6 +19,12 @@ func TestRenderAll(t *testing.T) {
 			Feedback: []Feedback{{Author: "ana", At: "2026-09-27 10:00", Channel: "support", Text: "the status page is red"}}},
 		"plan":    Plan{Label: "U-7", Title: "Health returns 500", Repos: repos, Issues: []Issue{issue}},
 		"develop": Develop{Label: "U-7", Title: "Health returns 500", Branch: "tfy/u7-fix", Targets: repos, Criteria: []Criterion{{ID: "AC-1", Text: "returns 200 degraded"}}},
+		"merge": Merge{Label: "U-7", Title: "Health returns 500", MergeMethod: "squash", Open: []string{"app/ is acme/app#4, branch tfy/u7-fix, head abc, reviewed; checks: success"},
+			Merged: []string{"api/ is acme/api#3, merged into main as def"}, Notes: []string{"tfy merged acme/api#3."}},
+		"review": Review{Label: "U-7", Title: "Health returns 500", Criteria: []Criterion{{ID: "AC-1", Text: "returns 200 degraded"}},
+			Diffs:  []ReviewDiff{{Dir: "app", FullName: "acme/app", Branch: "tfy/u7-fix", File: "app.diff", Commits: 2, Checks: "success", UpdateFile: "app.update.diff"}},
+			Update: "Pin acme/api to def.", Merged: []string{"api/ is acme/api#3, merged into main as def"},
+			Requested: []Request{{By: "ana", Text: "Log the error first."}}},
 		"learn": Learn{Label: "U-7", Title: "Health returns 500", Kind: "bugfix", Summary: "Say degraded.", Repos: repos,
 			PRs: []string{"acme/api#3 (merged)"}, ReviewRounds: 1,
 			Reviews:  []LearnReview{{Round: 1, Decision: "request changes", Findings: []string{"[major] acme/api main.go: no test"}}},
@@ -51,6 +57,24 @@ func TestRevisionVariants(t *testing.T) {
 	text, _, _ = Render("develop", Develop{Label: "U-1", Branch: "b", Findings: "AC-2 is unmet"})
 	if !strings.Contains(text, "AC-2 is unmet") || strings.Contains(text, "Acceptance criteria:") {
 		t.Errorf("findings prompt:\n%s", text)
+	}
+	text, _, _ = Render("develop", Develop{Label: "U-1", Branch: "b", Findings: "Log the error first.", RequestedBy: "ana"})
+	if !strings.HasPrefix(text, "# Make the changes ana asked for in U-1") || strings.Contains(text, "A reviewer compared") || strings.Contains(text, "\n\n\n") {
+		t.Errorf("requested changes prompt:\n%s", text)
+	}
+}
+
+// A resumed merge run hears what happened, and the review's findings on its
+// update, without the instructions it already has.
+func TestMergeContinues(t *testing.T) {
+	text, _, err := Render("merge", Merge{Label: "U-7", Title: "Fix", MergeMethod: "squash", Continue: true,
+		Open: []string{"app/ is acme/app#4"}, Findings: "- AC-1 is unmet: the pin moved too"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(text, "# Continue merging U-7") || !strings.Contains(text, "the pin moved too") || strings.Contains(text, "Each decision is one of") ||
+		strings.Contains(text, "\n\n\n") {
+		t.Errorf("continued merge prompt:\n%s", text)
 	}
 }
 

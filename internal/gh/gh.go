@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -311,7 +312,7 @@ func (c *Client) PRReady(ctx context.Context, repo string, number int) error {
 }
 
 // PRMerge merges a pull request, but only if its head is still matchHead.
-func (c *Client) PRMerge(ctx context.Context, repo string, number int, method, matchHead string, deleteBranch bool) error {
+func (c *Client) PRMerge(ctx context.Context, repo string, number int, method, matchHead string, deleteBranch, admin bool) error {
 	args := []string{"pr", "merge", strconv.Itoa(number), "--repo", repo, "--" + method}
 	if matchHead != "" {
 		args = append(args, "--match-head-commit", matchHead)
@@ -319,8 +320,21 @@ func (c *Client) PRMerge(ctx context.Context, repo string, number int, method, m
 	if deleteBranch {
 		args = append(args, "--delete-branch")
 	}
+	if admin {
+		// Bypasses the base branch's rules, for a user allowed to.
+		args = append(args, "--admin")
+	}
 	_, err := c.run(ctx, args...)
 	return err
+}
+
+// RulesRefused reports whether gh refused a merge because the base branch's
+// rules forbid it for now, such as a required approval or an out-of-date
+// branch: gh then suggests --admin, which lets an administrator merge
+// anyway.
+func RulesRefused(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && strings.Contains(e.Stderr, "--admin")
 }
 
 // PRClose closes a pull request.

@@ -122,7 +122,7 @@ func fakeClaude() int {
 	if dir := os.Getenv("FAKE_CONTROL"); dir != "" {
 		_ = os.MkdirAll(dir, 0o755)
 		kind := "other"
-		for k, marker := range map[string]string{"define": "open_questions", "plan": "acceptance_criteria", "triage": "group_key", "develop": "tests_passed", "learn": "pr_template", "issue": "worth_updating"} {
+		for k, marker := range map[string]string{"define": "open_questions", "plan": "acceptance_criteria", "triage": "group_key", "develop": "tests_passed", "learn": "pr_template", "issue": "worth_updating", "merge": "wait_for"} {
 			if strings.Contains(schema, marker) {
 				kind = k
 			}
@@ -136,6 +136,8 @@ func fakeClaude() int {
 
 	var out any
 	switch {
+	case strings.Contains(schema, "wait_for"):
+		out = fakeMerge(string(prompt))
 	case strings.Contains(schema, "worth_updating"):
 		// Checking a linked issue: $FAKE_CONTROL/issue.json, or no update.
 		out = map[string]any{"worth_updating": false, "reason": "The issue says it all.", "comment": "", "title": "", "body": ""}
@@ -185,13 +187,6 @@ func fakeClaude() int {
 		for _, m := range regexp.MustCompile(`(?m)^- ([\w.-]+)/ \(`).FindAllStringSubmatch(string(prompt), -1) {
 			listed[m[1]] = true
 		}
-		if strings.Contains(string(prompt), "# Merge step") {
-			// What git sees of acme/api through the run's config, and
-			// whether a push through it gets anywhere.
-			lsRemote, _ := exec.Command("git", "ls-remote", "https://github.com/acme/api").CombinedOutput()
-			push := exec.Command("git", "-C", "app", "push", "https://github.com/acme/api", "HEAD:refs/heads/sneaky").Run()
-			_ = os.WriteFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "mirror.txt"), []byte(fmt.Sprintf("%s\npush error: %v\n", lsRemote, push)), 0o644)
-		}
 		for _, d := range gitDirs(cwd) {
 			b, _ := exec.Command("git", "-C", d, "rev-parse", "--abbrev-ref", "HEAD").Output()
 			if !strings.HasPrefix(strings.TrimSpace(string(b)), "tfy/") || len(listed) > 0 && !listed[d] {
@@ -232,6 +227,56 @@ func fakeClaude() int {
 		"session_id": sid, "result": resultText, "structured_output": out, "permission_denials": []any{},
 		"usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
 	return 0
+}
+
+var openPRLine = regexp.MustCompile(`(?m)^- ([\w.-]+)/ is \S+#\d+, branch`)
+
+// fakeMerge pops the merge run's next decision from $FAKE_CONTROL/merges,
+// one JSON object per line, and merges every open pull request once the
+// list is exhausted. Its prompts pile up in prompts-merge.log. An update
+// commits a pin of acme/api's base/main in each repository it names, and
+// records what git sees of acme/api through the run's config, and whether
+// a push through it gets anywhere.
+func fakeMerge(prompt string) any {
+	control := os.Getenv("FAKE_CONTROL")
+	if f, err := os.OpenFile(filepath.Join(control, "prompts-merge.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintf(f, "%s\n----\n", prompt)
+		f.Close()
+	}
+	var d map[string]any
+	path := filepath.Join(control, "merges")
+	if b, err := os.ReadFile(path); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+		if lines[0] != "" {
+			_ = json.Unmarshal([]byte(lines[0]), &d)
+			_ = os.WriteFile(path, []byte(strings.Join(lines[1:], "\n")), 0o644)
+		}
+	}
+	if d == nil {
+		open := []string{}
+		for _, m := range openPRLine.FindAllStringSubmatch(prompt, -1) {
+			open = append(open, m[1])
+		}
+		d = map[string]any{"action": "merge", "repos": open, "wait_for": "", "reason": "Nothing needs an order."}
+	}
+	if d["action"] == "update" {
+		lsRemote, _ := exec.Command("git", "ls-remote", "https://github.com/acme/api").CombinedOutput()
+		push := exec.Command("git", "-C", "app", "push", "https://github.com/acme/api", "HEAD:refs/heads/sneaky").Run()
+		_ = os.WriteFile(filepath.Join(control, "mirror.txt"), []byte(fmt.Sprintf("%s\npush error: %v\n", lsRemote, push)), 0o644)
+		pin, _ := exec.Command("git", "-C", "api", "rev-parse", "base/main").Output()
+		for _, r := range d["repos"].([]any) {
+			dir := r.(string)
+			f, _ := os.OpenFile(filepath.Join(dir, "deps.txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			fmt.Fprintf(f, "acme/api %s", pin)
+			f.Close()
+			for _, c := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", "chore(deps): pin the merged api"}} {
+				if msg, err := exec.Command("git", append([]string{"-C", dir}, c...)...).CombinedOutput(); err != nil {
+					fmt.Fprintln(os.Stderr, string(msg))
+				}
+			}
+		}
+	}
+	return d
 }
 
 func must(b []byte, err error) []byte {
@@ -544,7 +589,11 @@ func fakeGH() int {
 				if p.State == "OPEN" {
 					p.HeadRefOid = remoteHead(repo, p.HeadRefName)
 				}
+				// $FAKE_CONTROL/mergeable overrides GitHub's verdict.
 				p.Mergeable = "MERGEABLE"
+				if b, err := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), "mergeable")); err == nil {
+					p.Mergeable = strings.TrimSpace(string(b))
+				}
 				print(p)
 				return 0
 			}
@@ -566,6 +615,14 @@ func fakeGH() int {
 			}
 			switch args[1] {
 			case "merge":
+				// $FAKE_CONTROL/branch-rules: the base branch's rules refuse
+				// the merge, as gh reports it, unless an administrator merges.
+				if _, err := os.Stat(filepath.Join(os.Getenv("FAKE_CONTROL"), "branch-rules")); err == nil && !slices.Contains(args, "--admin") {
+					fmt.Fprintf(os.Stderr, "X Pull request %s#%d is not mergeable: the base branch policy prohibits the merge.\n"+
+						"To have the pull request merged after all the requirements have been met, add the `--auto` flag.\n"+
+						"To use administrator privileges to immediately merge the pull request, add the `--admin` flag.\n", repo, prs[i].Number)
+					return 1
+				}
 				if want := flagValue(args, "--match-head-commit"); want != "" && want != remoteHead(repo, prs[i].HeadRefName) {
 					fmt.Fprintln(os.Stderr, "head commit does not match")
 					return 1

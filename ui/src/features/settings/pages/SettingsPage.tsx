@@ -132,12 +132,20 @@ export default function SettingsPage() {
 									size="small"
 									rowKey="kind"
 									pagination={false}
-									dataSource={["triage", "define", "plan", "develop", "review", "release", "learn", "issue"].map(
-										(k) => ({
-											kind: k,
-											...config.data.stages[k],
-										}),
-									)}
+									dataSource={[
+										"triage",
+										"define",
+										"plan",
+										"develop",
+										"review",
+										"merge",
+										"release",
+										"learn",
+										"issue",
+									].map((k) => ({
+										kind: k,
+										...config.data.stages[k],
+									}))}
 									onRow={() => ({ style: { cursor: "default" } })}
 									columns={[
 										{

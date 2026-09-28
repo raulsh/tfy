@@ -28,19 +28,19 @@ const (
 const (
 	releasePoll     = time.Minute
 	releaseAttempts = 120
+	// ciGrace is how long after a merge its commit may show no CI yet
+	// before tfy takes it that none will run: GitHub takes a moment to
+	// start the workflows of a push.
+	ciGrace = 2 * time.Minute
 )
 
-// release follows a merged step. Before the last step of a merge plan, it
-// waits for what the next step needs and moves on to it. After the last,
-// it writes the release notes and follows CI on every merge commit: green
-// everywhere finishes the unit, red asks for a follow-up.
+// release follows the merged change: it writes the release notes and
+// follows CI on every merge commit. Green everywhere finishes the unit, red
+// asks for a follow-up.
 func (p *Pipeline) release(ctx context.Context, job db.Job, u db.Unit) error {
-	steps, urs, err := p.unitSteps(ctx, u)
+	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
 	if err != nil {
 		return err
-	}
-	if int(u.MergeStep) < len(steps)-1 {
-		return p.releaseStep(ctx, job, u, steps)
 	}
 	var mergedRepos []db.ListUnitReposRow
 	for _, ur := range targetsOf(urs) {
@@ -90,6 +90,9 @@ func (p *Pipeline) trackCI(ctx context.Context, u db.Unit, repos []db.ListUnitRe
 			return false, nil, err
 		}
 		state := releaseState(runs)
+		if since := time.Since(ur.MergedAt.Time); state == ReleaseNone && ur.MergedAt.Valid && since >= 0 && since < ciGrace {
+			state = ReleasePending
+		}
 		raw, _ := json.Marshal(runs)
 		if err := p.Store.Q.SetUnitRepoRelease(ctx, db.SetUnitRepoReleaseParams{ReleaseState: state, ReleaseRuns: string(raw), Now: store.Now(), UnitID: u.ID, RepoID: ur.RepoID}); err != nil {
 			return false, nil, err

@@ -76,7 +76,7 @@ func (s *Server) configView(c fiber.Ctx) error {
 		Timeout string  `json:"timeout"`
 	}
 	stages := map[string]stageView{}
-	for _, kind := range []string{"triage", "define", "plan", "develop", "review", "release", "learn", "issue"} {
+	for _, kind := range []string{"triage", "define", "plan", "develop", "review", "merge", "release", "learn", "issue"} {
 		st := s.Config.Stage(kind)
 		stages[kind] = stageView{st.Model, st.Effort, st.Budget, st.Timeout.String()}
 	}
@@ -310,7 +310,7 @@ func (s *Server) listUnits(c fiber.Ctx) error {
 	out := make([]UnitView, 0, len(units))
 	for _, u := range units {
 		busy := slices.Contains(busyIDs, u.ID)
-		out = append(out, unitView(u, busy, pipeline.AvailableActions(u, busy), names[u.ProjectID]))
+		out = append(out, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), names[u.ProjectID]))
 	}
 	return ok(c, out)
 }
@@ -325,7 +325,7 @@ func (s *Server) createUnit(c fiber.Ctx) error {
 		return err
 	}
 	busy := s.Pipeline.Busy(c.Context(), u.ID)
-	return created(c, unitView(u, busy, pipeline.AvailableActions(u, busy), ""))
+	return created(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
 }
 
 // UnitDetail is everything the unit page shows.
@@ -337,7 +337,6 @@ type UnitDetail struct {
 	Activity  []ActivityView          `json:"activity"`
 	Feedback  []FeedbackView          `json:"feedback"`
 	Issues    []IssueView             `json:"issues"`
-	MergePlan pipeline.MergePlanView  `json:"merge_plan"`
 }
 
 func (s *Server) getUnit(c fiber.Ctx) error {
@@ -349,7 +348,7 @@ func (s *Server) getUnit(c fiber.Ctx) error {
 	project, _ := s.Store.Q.GetProject(ctx, u.ProjectID)
 	busy := s.Pipeline.Busy(ctx, u.ID)
 	d := UnitDetail{
-		UnitView:  unitView(u, busy, pipeline.AvailableActions(u, busy), project.Name),
+		UnitView:  unitView(u, busy, s.Pipeline.Actions(ctx, u, busy), project.Name),
 		Repos:     []UnitRepoView{},
 		Documents: map[string]DocumentMeta{},
 		Runs:      []RunView{},
@@ -390,9 +389,6 @@ func (s *Server) getUnit(c fiber.Ctx) error {
 	if d.Issues, err = s.unitIssueViews(c, u.ID); err != nil {
 		return err
 	}
-	if d.MergePlan, err = s.Pipeline.MergePlan(ctx, u); err != nil {
-		return err
-	}
 	return ok(c, d)
 }
 
@@ -408,7 +404,7 @@ func (s *Server) unitAction(c fiber.Ctx) error {
 		return err
 	}
 	busy := s.Pipeline.Busy(c.Context(), u.ID)
-	return ok(c, unitView(u, busy, pipeline.AvailableActions(u, busy), ""))
+	return ok(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
 }
 
 func (s *Server) getDocument(c fiber.Ctx) error {

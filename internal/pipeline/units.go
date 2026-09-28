@@ -126,6 +126,10 @@ const (
 	ActionRefresh     = "refresh"
 	ActionMerge       = "merge"
 	ActionRereview    = "rereview"
+	// ActionBackToMerge undoes a review asked for by mistake: the unit goes
+	// back to awaiting merge while the last approval still covers the pull
+	// requests.
+	ActionBackToMerge = "back-to-merge"
 	ActionOverride    = "override-approve"
 	ActionReviseSpec  = "revise-spec"
 	ActionReopen      = "reopen"
@@ -143,6 +147,9 @@ type ActionInput struct {
 	// ClosePRs, on reject, closes the unit's pull requests and deletes
 	// their branches.
 	ClosePRs bool `json:"close_prs"`
+	// Admin, on merge, merges as a GitHub administrator: the base branch's
+	// rules, such as required approvals, are bypassed for this merge.
+	Admin bool `json:"admin"`
 }
 
 // AvailableActions lists what a person can do with a unit now.
@@ -163,8 +170,11 @@ func AvailableActions(u db.Unit, busy bool) []string {
 	case domain.StateSpecReview:
 		out = append(out, ActionApproveSpec, ActionIterate, ActionBack)
 	case domain.StateReviewing:
-		if attention == domain.AttentionReviewBlocked && !busy {
-			out = append(out, ActionIterate, ActionOverride, ActionReviseSpec)
+		if !busy {
+			out = append(out, ActionIterate)
+			if attention == domain.AttentionReviewBlocked {
+				out = append(out, ActionOverride, ActionReviseSpec)
+			}
 		}
 		out = append(out, ActionRefresh)
 	case domain.StateAwaitingMerge:
@@ -174,7 +184,8 @@ func AvailableActions(u db.Unit, busy bool) []string {
 			default:
 				out = append(out, ActionMerge)
 			}
-			out = append(out, ActionRereview, ActionReviseSpec)
+			// People review the pull requests too, and may ask for changes.
+			out = append(out, ActionIterate, ActionRereview, ActionReviseSpec)
 		}
 		out = append(out, ActionRefresh)
 	case domain.StateMerging:
@@ -203,6 +214,16 @@ func AvailableActions(u db.Unit, busy bool) []string {
 	return out
 }
 
+// Actions lists what a person can do with a unit now, including what
+// depends on more than its state.
+func (p *Pipeline) Actions(ctx context.Context, u db.Unit, busy bool) []string {
+	out := AvailableActions(u, busy)
+	if u.State == string(domain.StateReviewing) && !busy && p.approvalHolds(ctx, u) {
+		out = append(out, ActionBackToMerge)
+	}
+	return out
+}
+
 // Busy reports whether the unit has a job queued or running.
 func (p *Pipeline) Busy(ctx context.Context, unitID string) bool {
 	_, err := p.Store.Q.ActiveJobForUnit(ctx, store.NullString(unitID))
@@ -219,7 +240,7 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		return u, err
 	}
 	busy := p.Busy(ctx, u.ID)
-	if !slices.Contains(AvailableActions(u, busy), action) {
+	if !slices.Contains(p.Actions(ctx, u, busy), action) {
 		return u, &ConflictError{Msg: fmt.Sprintf("%q is not possible while the unit is %s", action, strings.ReplaceAll(u.State, "_", " "))}
 	}
 	actor := actorOr(in.Actor)
@@ -238,11 +259,6 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		return u, nil
 
 	case ActionApproveSpec:
-		// An approved spec starts its merge plan over.
-		if err := p.Store.Q.SetUnitMergeStep(ctx, db.SetUnitMergeStepParams{MergeStep: 0, Now: store.Now(), ID: u.ID}); err != nil {
-			return u, err
-		}
-		u.MergeStep = 0
 		if u, err = p.transition(ctx, u, domain.StateDeveloping, actor, "specification approved"); err != nil {
 			return u, err
 		}
@@ -250,13 +266,8 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 
 	case ActionIterate:
 		feedback := strings.TrimSpace(in.Feedback)
-		if state == domain.StateReviewing {
-			meta, _ := p.latestReview(ctx, u)
-			if feedback != "" {
-				meta.Findings = append(meta.Findings, Finding{Severity: "major", Repo: "all", Message: feedback})
-				p.activity(ctx, u.ID, actor, "feedback", feedback, nil)
-			}
-			return u, p.sendBack(ctx, u, meta, actor)
+		if state == domain.StateReviewing || state == domain.StateAwaitingMerge {
+			return u, p.requestChanges(ctx, u, feedback, actor)
 		}
 		if feedback == "" {
 			return u, &InvalidError{Msg: "say what should change"}
@@ -279,11 +290,25 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 	case ActionOverride:
 		return p.transition(ctx, u, domain.StateAwaitingMerge, actor, "review overridden")
 
+	case ActionBackToMerge:
+		return p.backToMerge(ctx, u, actor)
+
 	case ActionMerge:
-		if u, err = p.transition(ctx, u, domain.StateMerging, actor, "merge requested"); err != nil {
+		// Updates made while merging get their own count of review rounds.
+		if err := p.Store.Q.SetUnitReviewIteration(ctx, db.SetUnitReviewIterationParams{ReviewIteration: 0, Now: store.Now(), ID: u.ID}); err != nil {
 			return u, err
 		}
-		return u, p.enqueue(ctx, JobMerge, u, nil)
+		if err := p.Store.Q.SetUnitMergeAdmin(ctx, db.SetUnitMergeAdminParams{MergeAdmin: in.Admin, Now: store.Now(), ID: u.ID}); err != nil {
+			return u, err
+		}
+		why := "merge requested"
+		if in.Admin {
+			why = "merge requested, as an administrator: the base branch's rules are bypassed"
+		}
+		if u, err = p.transition(ctx, u, domain.StateMerging, actor, why); err != nil {
+			return u, err
+		}
+		return u, p.enqueue(ctx, JobMerge, u, mergePayload{})
 
 	case ActionRereview:
 		if u, err = p.transition(ctx, u, domain.StateReviewing, actor, "review requested"); err != nil {
@@ -299,16 +324,6 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 
 	case ActionMarkRelease:
 		p.Jobs.CancelUnit(ctx, u.ID)
-		// Before the last step of a merge plan, this goes on to the next
-		// step without waiting any longer.
-		if steps, _, err := p.unitSteps(ctx, u); err == nil && int(u.MergeStep) < len(steps)-1 {
-			p.flag(ctx, u.ID, domain.AttentionNone, "")
-			p.activity(ctx, u.ID, actor, "step", fmt.Sprintf("went on to merge step %d without waiting", u.MergeStep+2), nil)
-			if err := p.advanceStep(ctx, db.Job{}, u, steps); err != nil {
-				return u, err
-			}
-			return p.Store.Q.GetUnit(ctx, u.ID)
-		}
 		if u, err = p.transition(ctx, u, domain.StateDone, actor, "marked released"); err != nil {
 			return u, err
 		}

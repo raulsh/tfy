@@ -12,8 +12,8 @@ tfy, short for thefactory, takes a **unit** of work (a feature, bug fix, improve
 - **Definition.** Claude writes the requirement: what is needed, and why. You edit it, or ask for a revision, then mark it ready.
 - **Planning.** Claude reads the linked repositories and writes a spec with numbered acceptance criteria. You approve it.
 - **Executing.** Claude implements the spec in isolated checkouts and commits locally. tfy pushes the branches and opens the pull requests, across as many repositories as the spec touches.
-- **Review.** A reviewer run checks each acceptance criterion against the diff. If any criterion is unmet or a finding blocks, the work goes back to development automatically, for a limited number of rounds.
-- **Merge.** You merge from the UI. tfy first checks that no pull request changed since the review and none conflicts. You can also merge on GitHub; tfy notices.
+- **Review.** A reviewer run checks each acceptance criterion against the diff. If any criterion is unmet or a finding blocks, the work goes back to development automatically, for a limited number of rounds. Once the pull requests are open you can **Request changes** yourself, even after the review approved. Claude makes them as your request, beyond the spec if need be, and the next review counts them as asked for. **Back to merge** undoes a review you asked for by mistake, as long as the pull requests haven't changed since the approval.
+- **Merge.** You merge from the UI, and a merge run takes it from there: it decides the order, and tfy checks each pull request before merging it (unchanged since the review, green, no conflicts). You can also merge on GitHub; tfy notices. If GitHub's rules for the base branch refuse the merge, for example because it needs an approval, tfy hands the unit back to you. You can then tick **Merge as an administrator** to bypass the rules (`gh pr merge --admin`) for that merge only.
 - **Release.** Claude writes release notes for users, and tfy follows CI on each merge commit. If CI fails, it offers a follow-up bugfix unit.
 - **Feedback.** Units can also start from Slack. tfy polls your channels through `slk` and triages every new message:
   - actionable ones become **proposals** for you to accept;
@@ -69,19 +69,16 @@ Hooks run outside the permission system, so tfy only takes them from the default
 
 ## Changes that merge in order
 
-Some changes across repositories cannot merge at once. A shared module has to be merged before the repositories that use it can pin its merged commit. A service has to be deployed before the clients that need it. The plan run then adds a **merge plan** to the spec: ordered steps, each a set of repositories merged together. For each step after the first it gives:
+Some changes across repositories cannot merge at once. A shared module has to be merged before the repositories that use it can pin its merged commit. A service has to be deployed before the clients that need it. The plan run then writes a **Merge order** section in the spec: what merges first, what the rest waits for, and what must change in them once it is so, such as "pin github.com/acme/api to the commit it merged as".
 
-- **what the step waits for** from the steps before it: `merged`; `released`, meaning CI (including any deploy) is green on their merge commits; or `tagged`, meaning a tag contains their merge commits, for dependencies consumed by version;
-- **an update** to make first, if any, such as "pin github.com/acme/api to the commit step 1 merged".
+The whole change is developed and reviewed at once, as usual. Where one repository depends on another, development pins that repository's commit on the unit's branch. When you click **Merge**, a **merge run** takes over. It reads the spec and the repositories, then decides each next step:
 
-You approve the plan with the spec. The whole change is developed and reviewed at once, as usual. Then:
+- **merge** some pull requests together: all of them at once when nothing needs an order;
+- **update** open pull requests for what merged, such as moving a pin from a branch commit, which a squash merge leaves behind, to the merge commit or its tag. The run makes the change in the checkouts and tests it. tfy pushes it and reviews the update on its own, and a review that asks for changes goes back to the merge run;
+- **wait** until what merged is `released` (CI, deploys included, is green on its merge commits) or `tagged` (a tag contains them);
+- **stop** when it cannot go on safely, and hand the unit back to you.
 
-1. **Merge** merges the current step only.
-2. tfy waits for what the next step needs, reusing the release stage's CI tracking.
-3. For an update, a short development round changes just that step's repositories, and it is reviewed on its own.
-4. **Merge** is offered for the next step. **Continue to step N** skips a wait you don't need.
-
-Release notes and the retrospective come once, after the last step. Without a merge plan, everything merges together as before.
+tfy carries out each decision and tells the run what happened, until everything is merged. The run can change checkouts as a development run can, but it can neither merge nor push: tfy does both, with the same checks as always. The Merge card on the Execution tab lists its decisions. Release notes and the retrospective come once everything is merged.
 
 **The unit's repositories are available as dependencies.** Agents have no credentials, so private repositories would be out of reach as dependencies. Each run's git config serves `github.com/<owner>/<repo>` URLs from the unit's checkouts, which hold its branches, the default branch as last fetched, and tags. tfy also adds them to `GOPRIVATE`. `go get github.com/acme/api@<commit>`, or an npm or pip git dependency, then works for a commit merged a minute ago or one that only exists on the unit's branch. Pushes through those URLs go nowhere, and the guard blocks pushes anyway.
 

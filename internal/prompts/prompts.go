@@ -158,14 +158,9 @@ type Develop struct {
 	NewDependencies []string
 	Issues          []Issue
 	Findings        string // review findings when iterating
-	// Plan describes the merge plan, when the pull requests merge in steps.
-	Plan []string
-	// Step, from 1, is the merge step whose update this round makes, out
-	// of Steps; Merged says what the steps before it merged.
-	Step   int
-	Steps  int
-	Update string
-	Merged []string
+	// RequestedBy names the person who asked for the changes in Findings,
+	// when it was not the reviewer.
+	RequestedBy string
 }
 
 // ReviewDiff is one repository's change under review.
@@ -176,6 +171,8 @@ type ReviewDiff struct {
 	File     string // under docs/review/
 	Commits  int
 	Checks   string // CI on the pull request: success, failure, pending, none
+	// UpdateFile, under docs/review/, is the merge run's update alone.
+	UpdateFile string
 }
 
 // Review is the data for review.tmpl.
@@ -187,12 +184,37 @@ type Review struct {
 	Round    int // 0 for the first review
 	// TestReport is what the implementer said about its own test runs.
 	TestReport string
-	// Step, from 1, is set when the round reviews a merge step's update,
-	// out of Steps; Merged says what the steps before it merged.
-	Step   int
-	Steps  int
+	// Update is set when the round reviews what the merge run changed
+	// between two merges, as it described it; Merged says what had merged.
 	Update string
 	Merged []string
+	// Requested are the changes people asked for beyond the spec.
+	Requested []Request
+}
+
+// Request is a change a person asked for after the spec was approved.
+type Request struct {
+	By   string
+	Text string
+}
+
+// Merge is the data for merge.tmpl.
+type Merge struct {
+	Label       string
+	Title       string
+	MergeMethod string
+	// Open and Merged describe the pull requests, one line each.
+	Open   []string
+	Merged []string
+	// Notes say what happened since the last decision.
+	Notes []string
+	// Findings are the review's, when it asked for changes to an update,
+	// or RequestedBy's, when a person did.
+	Findings    string
+	RequestedBy string
+	// Continue is set when the run resumes the session of the last one,
+	// which had the instructions already.
+	Continue bool
 }
 
 // TriageMessage is one Slack message to triage.

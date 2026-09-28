@@ -1,0 +1,41 @@
+{{if .Continue -}}
+# Continue merging {{.Label}}: {{.Title}}
+{{- if .Findings}}
+
+{{if .RequestedBy}}{{.RequestedBy}} asked for changes to your update{{else}}The review of your update asked for changes{{end}}:
+
+<review-findings>
+{{trim .Findings}}
+</review-findings>
+
+Address them in the same checkouts and commit, then return update again, or blocked if the update cannot be made right.
+{{- end}}
+{{- else -}}
+# Merge {{.Label}}: {{.Title}}
+
+The change is reviewed and approved, and a person asked tfy to merge it. You decide how its pull requests merge. tfy carries out each decision and then asks you for the next one, with what happened, until every pull request is merged. You cannot merge, push, or reach GitHub yourself.
+
+Read docs/spec.md first, above all its "Merge order" section if it has one. Then look at how the repositories below depend on each other (go.mod, package.json and the like), and, where the order matters, at how they are built, released and deployed (their CI workflows).
+{{- end}}
+{{if .Notes}}
+Since your last decision:
+{{range .Notes}}- {{.}}
+{{end}}{{end}}
+Open pull requests (tfy merges with {{.MergeMethod}}):
+{{range .Open}}- {{.}}
+{{end}}{{if .Merged}}
+Merged:
+{{range .Merged}}- {{.}}
+{{end}}{{end}}{{if not .Continue}}
+Each decision is one of:
+- merge: the pull requests to merge now, together. When nothing needs an order, merge them all at once. When one repository uses another one of this unit (as a Go module, an npm package, …), or needs it deployed first, merge that one first.
+- update: an open pull request needs a change before it can merge, because of what merged. Most often it pins another repository of this unit at a commit on the unit's branch. A squash or rebase merge leaves that commit out of the default branch, so CI could no longer fetch it. Move the pin to the merge commit, or to the tag that contains it when the repository depends on released versions: `go get github.com/<owner>/<repo>@<merge commit>` and then `go mod tidy`, or the npm or pip equivalent. Make only the change the merge calls for, in the checkouts of open pull requests, on the branches they are on; build and run the relevant tests; commit following the repository's conventions. Return the repositories you committed to: tfy pushes them and has the update reviewed before it merges anything more.
+- wait: the next merge needs what merged to be released (CI, deploys included, succeeded on its merge commits) or tagged (a tag contains its merge commits). Name those merged repositories; tfy asks you again once that is so.
+- blocked: you cannot go on safely. Say why, for the person following the merge.
+
+Rules:
+- Every shell command starts in the workspace root, so a `cd` lasts for that command only. Use `git -C <dir> …`, or `cd <dir> && …` within one command.
+- git URLs of github.com/<owner>/<repo> for this project's repositories resolve to their checkouts here, which hold what merged (the default branch as base/<branch>, and tags), so fetching one as a dependency needs no credentials. Never commit a replace directive, a go.work, or a path to a local checkout.
+- Never push, add remotes, or merge anything into a default branch yourself.
+{{end}}
+Return the structured output: action; repos, as directory names; wait_for, released or tagged for wait and empty otherwise; and reason, one or two sentences for the person following the merge{{if not .Continue}}, such as "api goes first: the other three pin its new commit"{{end}}.

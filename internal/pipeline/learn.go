@@ -147,7 +147,7 @@ func (p *Pipeline) learn(ctx context.Context, job db.Job, u db.Unit) error {
 func (p *Pipeline) learnData(ctx context.Context, u db.Unit, checkouts []db.ListUnitReposRow) prompts.Learn {
 	data := prompts.Learn{
 		Label: domain.Label(u.Seq), Title: u.Title, Kind: u.Kind, Summary: u.Summary,
-		Repos: promptRepos(checkouts, ""), ReviewRounds: int(u.ReviewIteration),
+		Repos: promptRepos(checkouts, ""),
 	}
 	urs, _ := p.Store.Q.ListUnitRepos(ctx, u.ID)
 	for _, ur := range targetsOf(urs) {
@@ -180,6 +180,9 @@ func (p *Pipeline) learnData(ctx context.Context, u db.Unit, checkouts []db.List
 
 	versions, _ := p.Store.Q.ListDocumentVersions(ctx, db.ListDocumentVersionsParams{UnitID: u.ID, Kind: DocReview})
 	for i := len(versions) - 1; i >= 0; i-- {
+		if versions[i].Author != "claude" {
+			continue // a person's request, which the feedback below holds
+		}
 		doc, err := p.Store.Q.GetDocumentVersion(ctx, db.GetDocumentVersionParams{UnitID: u.ID, Kind: DocReview, Version: versions[i].Version})
 		if err != nil {
 			continue
@@ -187,6 +190,11 @@ func (p *Pipeline) learnData(ctx context.Context, u db.Unit, checkouts []db.List
 		var m ReviewMeta
 		if json.Unmarshal([]byte(doc.Meta), &m) != nil {
 			continue
+		}
+		// Counted from the reviews: the unit's own count starts over for
+		// the updates made while merging.
+		if m.Decision == "request_changes" {
+			data.ReviewRounds++
 		}
 		r := prompts.LearnReview{Round: m.Round, Decision: strings.ReplaceAll(orDash(m.Decision), "_", " ")}
 		for _, c := range m.Criteria {

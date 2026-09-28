@@ -32,6 +32,8 @@ interface ReviewMeta {
 	findings: Finding[];
 	spec_criteria?: { id: string; text: string }[];
 	reviewed?: Record<string, string>;
+	// The person who asked for changes; absent for the review run's reviews.
+	by?: string;
 }
 
 const criterionTone: Record<string, Tone> = { met: "ok", partial: "warn", unmet: "error", not_verifiable: "neutral" };
@@ -72,6 +74,7 @@ export function ReviewPanel({ unit }: { unit: UnitDetail }) {
 					<StatusTag tone={approved ? "ok" : "warn"} label={approved ? "Approved" : "Changes requested"} />
 					<span className="faint" style={{ fontWeight: 400, fontSize: 12 }}>
 						round {meta.round}
+						{meta.by && ` · requested by ${meta.by}`}
 					</span>
 				</Space>
 			}

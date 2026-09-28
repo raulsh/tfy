@@ -57,6 +57,7 @@ func Default() Config {
 			"plan":    {Model: "opus", Effort: "high", Budget: 5, Timeout: 30 * time.Minute},
 			"develop": {Model: "opus", Effort: "high", Budget: 20, Timeout: 90 * time.Minute},
 			"review":  {Model: "opus", Effort: "high", Budget: 5, Timeout: 30 * time.Minute},
+			"merge":   {Model: "opus", Effort: "medium", Budget: 5, Timeout: 45 * time.Minute},
 			"release": {Model: "sonnet", Effort: "low", Budget: 1, Timeout: 10 * time.Minute},
 			"learn":   {Model: "opus", Effort: "medium", Budget: 2, Timeout: 15 * time.Minute},
 			"issue":   {Model: "opus", Effort: "medium", Budget: 1, Timeout: 10 * time.Minute},

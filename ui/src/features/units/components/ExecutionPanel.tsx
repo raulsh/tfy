@@ -7,7 +7,7 @@ import { Card } from "@/shared/components/OverlayDrawer";
 import { StatusTag } from "@/shared/components/StatusTag";
 import { humanize, shortSha } from "@/shared/lib/format";
 import { checksTone, prTone, toneColor } from "@/shared/lib/status";
-import { MergePlanCard } from "./MergePlanCard";
+import { MergeCard } from "./MergeCard";
 import { ReviewPanel } from "./ReviewPanel";
 
 // The repositories a unit touches, and where each stands on GitHub.
@@ -98,7 +98,7 @@ export function ExecutionPanel({ unit }: { unit: UnitDetail }) {
 	];
 	return (
 		<>
-			<MergePlanCard unit={unit} />
+			<MergeCard unit={unit} />
 			<ReviewPanel unit={unit} />
 			<Card title="Repositories" padded={false}>
 				<Table<UnitRepo>

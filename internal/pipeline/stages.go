@@ -23,10 +23,10 @@ type planPayload struct {
 
 type developPayload struct {
 	Findings string `json:"findings,omitempty"`
-	Retry    bool   `json:"retry,omitempty"`
-	// Step, from 1, is the merge step whose update this round makes: after
-	// the steps before it merged, in that step's repositories only.
-	Step int `json:"step,omitempty"`
+	// RequestedBy names the person who asked for the changes in Findings,
+	// when it was not the review run.
+	RequestedBy string `json:"requested_by,omitempty"`
+	Retry       bool   `json:"retry,omitempty"`
 }
 
 // defineMeta is the define run's structured output.
@@ -43,9 +43,6 @@ type SpecMeta struct {
 	TargetRepos        []string            `json:"target_repos"`
 	AcceptanceCriteria []prompts.Criterion `json:"acceptance_criteria"`
 	NewDependencies    []string            `json:"new_dependencies"`
-	// MergePlan orders the merges when the target repositories cannot all
-	// merge at once; empty means they merge together.
-	MergePlan []MergeStep `json:"merge_plan,omitempty"`
 }
 
 func decodePayload[T any](job db.Job) T {
@@ -215,6 +212,11 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 	if len(targets) == 0 {
 		return fmt.Errorf("the spec marks no repository to change")
 	}
+	// A repository whose pull request merged is done: later rounds leave it
+	// alone.
+	if targets = slices.DeleteFunc(targets, merged); len(targets) == 0 {
+		return fmt.Errorf("every pull request of this unit is merged; open a follow-up for further changes")
+	}
 	spec, err := p.Store.Q.LatestDocument(ctx, db.LatestDocumentParams{UnitID: u.ID, Kind: DocSpec})
 	if err != nil {
 		return fmt.Errorf("there is no approved spec")
@@ -225,18 +227,6 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 	// approved version.
 	if err := writeDoc(u, DocSpec, spec.Content); err != nil {
 		return err
-	}
-	steps := resolveSteps(meta.MergePlan, targets)
-	var st step
-	if payload.Step > 0 {
-		// A merge step's update touches that step's open pull requests only.
-		if payload.Step > len(steps) {
-			return fmt.Errorf("the merge plan has no step %d", payload.Step)
-		}
-		st = steps[payload.Step-1]
-		if targets = openRepos(st); len(targets) == 0 {
-			return fmt.Errorf("merge step %d has no open pull request to update", payload.Step)
-		}
 	}
 
 	branch, err := p.unitBranch(ctx, u, targets)
@@ -249,7 +239,7 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		}
 	}
 	// The other checkouts serve as dependencies: bring their default
-	// branches and tags up to date, merged steps included.
+	// branches and tags up to date.
 	p.refreshDependencies(ctx, urs, targets)
 
 	data := prompts.Develop{
@@ -261,20 +251,13 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 		NewDependencies: meta.NewDependencies,
 		Issues:          promptIssues(p.unitIssues(ctx, u, false)),
 		Findings:        payload.Findings,
-		Step:            payload.Step,
-		Steps:           len(steps),
-		Update:          st.Update,
-	}
-	if payload.Step > 0 {
-		data.Merged = p.mergedSoFar(ctx, steps, payload.Step-1)
-	} else if len(steps) > 1 {
-		data.Plan = planLines(steps)
+		RequestedBy:     payload.RequestedBy,
 	}
 	req := runRequest{Unit: u, Kind: "develop", Schema: prompts.Schema("develop")}
 	for _, ur := range targets {
 		req.Trusted = append(req.Trusted, dirOf(ur))
 	}
-	if payload.Findings != "" || payload.Step > 0 {
+	if payload.Findings != "" {
 		if prev, err := p.Store.Q.LastSessionRun(ctx, db.LastSessionRunParams{UnitID: store.NullString(u.ID), Kind: "develop"}); err == nil {
 			req.Resume = &prev
 		}
@@ -323,22 +306,6 @@ func (p *Pipeline) refreshDependencies(ctx context.Context, urs, targets []db.Li
 			p.Log.Warn("refresh a dependency checkout", "repo", ur.FullName, "error", err)
 		}
 	}
-}
-
-// planLines describe a merge plan for the development round.
-func planLines(steps []step) []string {
-	var out []string
-	for _, st := range steps {
-		line := fmt.Sprintf("Step %d: %s", st.Index+1, stepNames(st))
-		if st.Index > 0 {
-			line += fmt.Sprintf(", once step %d is %s", st.Index, st.WaitFor)
-		}
-		if st.Update != "" {
-			line += "; then, before it merges: " + st.Update
-		}
-		out = append(out, line)
-	}
-	return out
 }
 
 // unitBranch is the branch of the unit's change: the one earlier rounds

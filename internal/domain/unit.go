@@ -102,13 +102,13 @@ var transitions = map[State][]State{
 	StatePlanning:         {StateSpecReview, StateDefinitionReview},
 	StateSpecReview:       {StatePlanning, StateDeveloping, StateDefinitionReview},
 	StateDeveloping:       {StatePublishing, StateSpecReview},
-	StatePublishing:       {StateReviewing, StateAwaitingMerge, StateDeveloping, StateSpecReview},
-	StateReviewing:        {StateDeveloping, StateAwaitingMerge, StateSpecReview, StateReleasing, StateDone},
+	StatePublishing:       {StateReviewing, StateAwaitingMerge, StateDeveloping, StateSpecReview, StateMerging},
+	StateReviewing:        {StateDeveloping, StateAwaitingMerge, StateSpecReview, StateReleasing, StateDone, StateMerging},
 	StateAwaitingMerge:    {StateMerging, StateReviewing, StateDeveloping, StateSpecReview, StateReleasing, StateDone},
-	StateMerging:          {StateReleasing, StateAwaitingMerge, StateDone},
-	// A unit with a merge plan releases one step at a time: after a step,
-	// the next one gets its update (developing) or is ready to merge.
-	StateReleasing: {StateDone, StateDeveloping, StateAwaitingMerge},
+	// The merge run may update pull requests between merges: the update is
+	// published and reviewed, and merging goes on from there.
+	StateMerging:   {StateReleasing, StateAwaitingMerge, StateDone, StatePublishing},
+	StateReleasing: {StateDone},
 	StateRejected:  {StateProposed, StateDefinitionReview, StateSpecReview},
 }
 
@@ -142,6 +142,8 @@ const (
 	AttentionPRClosed        Attention = "pr_closed"
 	AttentionHeadChanged     Attention = "head_changed"
 	AttentionPartiallyMerged Attention = "partially_merged"
+	AttentionMergeBlocked    Attention = "merge_blocked" // the merge run stopped
+	AttentionBranchRules     Attention = "branch_rules"  // GitHub's rules for the base branch refuse the merge
 	AttentionCIFailed        Attention = "ci_failed"
 	AttentionNewFeedback     Attention = "new_feedback"
 )

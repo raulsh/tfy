@@ -29,6 +29,7 @@ export type UnitAction =
 	| "refresh"
 	| "merge"
 	| "rereview"
+	| "back-to-merge"
 	| "override-approve"
 	| "revise-spec"
 	| "reopen"
@@ -54,7 +55,7 @@ export interface Unit {
 	attention: string;
 	attention_detail: string;
 	review_iteration: number;
-	merge_step: number;
+	merge_round: number;
 	workspace_path: string;
 	created_by: string;
 	created_at: string;
@@ -134,7 +135,6 @@ export interface UnitDetail extends Unit {
 	activity: Activity[];
 	feedback: Feedback[];
 	issues: LinkedIssue[];
-	merge_plan: MergePlan;
 }
 
 export type FeedbackStatus =
@@ -414,24 +414,10 @@ export interface IssueOption {
 	units: string[];
 }
 
-// The order a unit's pull requests merge in, resolved against its targets.
-// Without a merge plan there is a single step.
-export interface MergePlan {
-	current: number;
-	steps: MergeStepView[];
-}
-
-export interface MergeStepView {
-	index: number;
+// A merge run's decision: the result of a run of kind "merge".
+export interface MergeDecision {
+	action: "merge" | "update" | "wait" | "blocked";
 	repos: string[];
-	wait_for: "merged" | "released" | "tagged";
-	update?: string;
-	state: "merged" | "current" | "pending";
-}
-
-// A merge plan as the plan run proposed it, in the spec's meta.
-export interface MergeStep {
-	repos: string[];
-	wait_for?: string;
-	update?: string;
+	wait_for: "" | "released" | "tagged";
+	reason: string;
 }

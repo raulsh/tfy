@@ -1,4 +1,13 @@
 {{if .Findings -}}
+{{if .RequestedBy -}}
+# Make the changes {{.RequestedBy}} asked for in {{.Label}}: {{.Title}}
+
+{{.RequestedBy}} reviewed the pull requests and asked for these changes. They decide what the change should be: make them, even where they go beyond docs/spec.md, and say so in your summary.
+
+<requested-changes>
+{{trim .Findings}}
+</requested-changes>
+{{- else -}}
 # Address the review of {{.Label}}: {{.Title}}
 
 A reviewer compared your changes with docs/spec.md and asked for changes:
@@ -6,24 +15,9 @@ A reviewer compared your changes with docs/spec.md and asked for changes:
 <review-findings>
 {{trim .Findings}}
 </review-findings>
+{{- end}}
 
-Address every finding in the same checkouts and on the same branch ({{.Branch}}), run the relevant tests again, and commit. The rules from before still apply: follow each repository's conventions, commit locally, never push. If the change the pull request describes has moved, update its title and description too.
-{{- else if .Step -}}
-# Merge step {{.Step}} of {{.Steps}} for {{.Label}}: {{.Title}}
-
-The unit's pull requests merge in steps. The steps before this one are merged:
-{{range .Merged}}- {{.}}
-{{end}}
-Before step {{.Step}} can merge, make this change, as the approved merge plan says:
-
-<update>
-{{trim .Update}}
-</update>
-
-Make it in these checkouts, on branch {{.Branch}}:
-{{range .Targets}}- {{.Dir}}/ ({{.FullName}})
-{{end}}
-The rest of the change was reviewed and approved: change nothing else. What was merged is available as a dependency: git fetches this project's repositories from their checkouts in this workspace, which hold the merged commits and their tags, so `go get github.com/<owner>/<repo>@<merged commit>` (then `go mod tidy`), or an npm or pip git dependency, works without credentials. Build and run the relevant tests against the merged code, then commit in each repository following its conventions. Never push.
+Work in the same checkouts and on the same branch ({{.Branch}}), run the relevant tests again, and commit. The rules from before still apply: follow each repository's conventions, commit locally, never push. If the change the pull request describes has moved, update its title and description too.
 {{- else -}}
 # Implement {{.Label}}: {{.Title}}
 
@@ -36,9 +30,7 @@ Acceptance criteria:
 {{range .Criteria}}- {{.ID}}: {{.Text}}
 {{end}}
 {{if .NewDependencies}}Dependencies you may add: {{range $i, $d := .NewDependencies}}{{if $i}}, {{end}}{{$d}}{{end}}.
-{{end}}{{if .Plan}}The pull requests merge in steps, as the spec's merge plan says:
-{{range .Plan}}- {{.}}
-{{end}}Where a repository here depends on another one of this unit that merges in an earlier step, depend on that repository's commit on branch {{.Branch}} for now; after it merges, a later round moves the pin to the merged commit.
+{{end}}{{if gt (len .Targets) 1}}Where one of these repositories depends on another one of them, depend on its commit on branch {{.Branch}} for now. When the change is approved, tfy's merge run merges the pull requests in order and moves such pins to what was merged.
 {{end}}{{if .Issues}}The change is for {{range $i, $is := .Issues}}{{if $i}}, {{end}}{{$is.Ref}} ({{$is.Title}}){{end}}; their text is in docs/issues/. tfy adds the references to each pull request itself ("Closes …" or "Refs …"), so don't write closing keywords for them; mention them where the repository's template asks for related issues.
 {{end}}
 Rules:

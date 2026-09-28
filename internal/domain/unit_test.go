@@ -23,17 +23,19 @@ func TestIllegalMoves(t *testing.T) {
 		{StateDone, StateRejected}, // terminal
 		{StateDone, StateDefining},
 		{StateReleasing, StatePublishing},
+		{StateReleasing, StateDeveloping},
+		{StateReleasing, StateAwaitingMerge},
 	}
 	for _, m := range illegal {
 		if CanTransition(m[0], m[1]) {
 			t.Errorf("%s → %s should be refused", m[0], m[1])
 		}
 	}
-	// A merge plan releases a step, then develops the next step's update or
-	// awaits its merge.
-	for _, to := range []State{StateDeveloping, StateAwaitingMerge, StateDone} {
-		if !CanTransition(StateReleasing, to) {
-			t.Errorf("releasing → %s must be allowed", to)
+	// The merge run's update between two merges is published and reviewed,
+	// and merging goes on after the review.
+	for _, m := range [][2]State{{StateMerging, StatePublishing}, {StateReviewing, StateMerging}} {
+		if !CanTransition(m[0], m[1]) {
+			t.Errorf("%s → %s must be allowed", m[0], m[1])
 		}
 	}
 }

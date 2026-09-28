@@ -17,7 +17,7 @@ INSERT INTO units (id, seq, project_id, parent_unit_id, kind, title, summary, de
                    workspace_path, created_by, created_at, updated_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
         ?11, ?12, ?13, ?13)
-RETURNING id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_step
+RETURNING id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin
 `
 
 type CreateUnitParams struct {
@@ -71,13 +71,14 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Unit, e
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.MergeStep,
+		&i.MergeRound,
+		&i.MergeAdmin,
 	)
 	return i, err
 }
 
 const getUnit = `-- name: GetUnit :one
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_step FROM units WHERE id = ?1
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units WHERE id = ?1
 `
 
 func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
@@ -101,13 +102,14 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.MergeStep,
+		&i.MergeRound,
+		&i.MergeAdmin,
 	)
 	return i, err
 }
 
 const listChildUnits = `-- name: ListChildUnits :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_step FROM units WHERE parent_unit_id = ?1 ORDER BY seq
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units WHERE parent_unit_id = ?1 ORDER BY seq
 `
 
 func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullString) ([]Unit, error) {
@@ -137,7 +139,8 @@ func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullStrin
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.MergeStep,
+			&i.MergeRound,
+			&i.MergeAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -153,7 +156,7 @@ func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullStrin
 }
 
 const listUnits = `-- name: ListUnits :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_step FROM units
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units
 WHERE (?1 IS NULL OR project_id = ?1)
 ORDER BY updated_at DESC
 LIMIT ?2
@@ -191,7 +194,8 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Unit, e
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.MergeStep,
+			&i.MergeRound,
+			&i.MergeAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -207,7 +211,7 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Unit, e
 }
 
 const listUnitsInStates = `-- name: ListUnitsInStates :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_step FROM units WHERE state IN (/*SLICE:states*/?) ORDER BY updated_at
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units WHERE state IN (/*SLICE:states*/?) ORDER BY updated_at
 `
 
 func (q *Queries) ListUnitsInStates(ctx context.Context, states []string) ([]Unit, error) {
@@ -247,7 +251,8 @@ func (q *Queries) ListUnitsInStates(ctx context.Context, states []string) ([]Uni
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.MergeStep,
+			&i.MergeRound,
+			&i.MergeAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -294,18 +299,33 @@ func (q *Queries) SetUnitAttention(ctx context.Context, arg SetUnitAttentionPara
 	return err
 }
 
-const setUnitMergeStep = `-- name: SetUnitMergeStep :exec
-UPDATE units SET merge_step = ?1, updated_at = ?2 WHERE id = ?3
+const setUnitMergeAdmin = `-- name: SetUnitMergeAdmin :exec
+UPDATE units SET merge_admin = ?1, updated_at = ?2 WHERE id = ?3
 `
 
-type SetUnitMergeStepParams struct {
-	MergeStep int64     `json:"merge_step"`
-	Now       time.Time `json:"now"`
-	ID        string    `json:"id"`
+type SetUnitMergeAdminParams struct {
+	MergeAdmin bool      `json:"merge_admin"`
+	Now        time.Time `json:"now"`
+	ID         string    `json:"id"`
 }
 
-func (q *Queries) SetUnitMergeStep(ctx context.Context, arg SetUnitMergeStepParams) error {
-	_, err := q.db.ExecContext(ctx, setUnitMergeStep, arg.MergeStep, arg.Now, arg.ID)
+func (q *Queries) SetUnitMergeAdmin(ctx context.Context, arg SetUnitMergeAdminParams) error {
+	_, err := q.db.ExecContext(ctx, setUnitMergeAdmin, arg.MergeAdmin, arg.Now, arg.ID)
+	return err
+}
+
+const setUnitMergeRound = `-- name: SetUnitMergeRound :exec
+UPDATE units SET merge_round = ?1, updated_at = ?2 WHERE id = ?3
+`
+
+type SetUnitMergeRoundParams struct {
+	MergeRound int64     `json:"merge_round"`
+	Now        time.Time `json:"now"`
+	ID         string    `json:"id"`
+}
+
+func (q *Queries) SetUnitMergeRound(ctx context.Context, arg SetUnitMergeRoundParams) error {
+	_, err := q.db.ExecContext(ctx, setUnitMergeRound, arg.MergeRound, arg.Now, arg.ID)
 	return err
 }
 
@@ -339,21 +359,27 @@ func (q *Queries) TouchUnit(ctx context.Context, arg TouchUnitParams) error {
 }
 
 const transitionUnit = `-- name: TransitionUnit :execrows
-UPDATE units SET state = ?1, attention = '', attention_detail = '', updated_at = ?2
-WHERE id = ?3 AND state = ?4
+UPDATE units SET state = ?1, attention = '', attention_detail = '',
+    merge_round = merge_round * ?2, merge_admin = merge_admin * ?2, updated_at = ?3
+WHERE id = ?4 AND state = ?5
 `
 
 type TransitionUnitParams struct {
 	ToState   string    `json:"to_state"`
+	KeepMerge int64     `json:"keep_merge"`
 	Now       time.Time `json:"now"`
 	ID        string    `json:"id"`
 	FromState string    `json:"from_state"`
 }
 
 // Conditional on the current state, so concurrent actions cannot both apply.
+// The merge run's decisions count only while it drives a merge, and a
+// person's choice to merge as an administrator holds for that merge only:
+// moving out of its states (keep_merge 0) resets both.
 func (q *Queries) TransitionUnit(ctx context.Context, arg TransitionUnitParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, transitionUnit,
 		arg.ToState,
+		arg.KeepMerge,
 		arg.Now,
 		arg.ID,
 		arg.FromState,

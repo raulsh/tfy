@@ -55,10 +55,11 @@ func (p *Pipeline) pollPRs(ctx context.Context) error {
 }
 
 // pollUnitPRs refreshes a unit's pull requests and moves the unit on when
-// they have all been merged, wherever that happened.
+// they have all been merged, wherever that happened. A unit the merge run
+// is merging moves on through the merge job instead.
 func (p *Pipeline) pollUnitPRs(ctx context.Context, u db.Unit) error {
-	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
-	if err != nil {
+	urs, err := p.syncPRs(ctx, u)
+	if err != nil || u.State == string(domain.StateMerging) {
 		return err
 	}
 	withPR, merged, closed := 0, 0, []string{}
@@ -67,9 +68,46 @@ func (p *Pipeline) pollUnitPRs(ctx context.Context, u db.Unit) error {
 			continue
 		}
 		withPR++
-		pr, err := p.GH.PRView(ctx, ur.FullName, int(ur.PrNumber))
+		switch ur.PrState {
+		case "merged":
+			merged++
+		case "closed":
+			closed = append(closed, fmt.Sprintf("%s #%d", ur.FullName, ur.PrNumber))
+		case "open":
+			// Commits pushed to the pull request after it was reviewed.
+			if u.State == string(domain.StateAwaitingMerge) && ur.ReviewedSha != "" && ur.HeadSha != ur.ReviewedSha &&
+				u.Attention != string(domain.AttentionHeadChanged) {
+				p.flag(ctx, u.ID, domain.AttentionHeadChanged, fmt.Sprintf("%s #%d has commits the review did not see; review it again before merging", ur.FullName, ur.PrNumber))
+			}
+		}
+	}
+	switch {
+	case withPR > 0 && merged == withPR:
+		u, err := p.transition(ctx, u, domain.StateReleasing, "github", "all pull requests merged")
 		if err != nil {
 			return err
+		}
+		return p.enqueue(ctx, JobRelease, u, nil)
+	case len(closed) > 0 && u.Attention != string(domain.AttentionPRClosed):
+		p.flag(ctx, u.ID, domain.AttentionPRClosed, "closed without merging: "+strings.Join(closed, ", "))
+	}
+	return nil
+}
+
+// syncPRs records where each of the unit's pull requests stands on GitHub,
+// and returns the unit's repositories as they are then.
+func (p *Pipeline) syncPRs(ctx context.Context, u db.Unit) ([]db.ListUnitReposRow, error) {
+	urs, err := p.Store.Q.ListUnitRepos(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, ur := range targetsOf(urs) {
+		if ur.PrNumber == 0 {
+			continue
+		}
+		pr, err := p.GH.PRView(ctx, ur.FullName, int(ur.PrNumber))
+		if err != nil {
+			return nil, err
 		}
 		state := strings.ToLower(pr.State)
 		var mergedAt time.Time
@@ -84,62 +122,14 @@ func (p *Pipeline) pollUnitPRs(ctx context.Context, u db.Unit) error {
 			PrState: state, ChecksState: pr.ChecksState(), HeadSha: head, MergeSha: pr.MergeSHA(),
 			MergedAt: store.NullTime(mergedAt), Now: store.Now(), UnitID: u.ID, RepoID: ur.RepoID,
 		}); err != nil {
-			return err
+			return nil, err
 		}
 		if state != ur.PrState {
 			p.activity(ctx, u.ID, "github", "pr", fmt.Sprintf("%s #%d is %s", ur.FullName, pr.Number, state), map[string]string{"url": pr.URL})
 			p.changed("unit", u.ID)
 		}
-		switch state {
-		case "merged":
-			merged++
-		case "closed":
-			closed = append(closed, fmt.Sprintf("%s #%d", ur.FullName, pr.Number))
-		case "open":
-			// Commits pushed to the pull request after it was reviewed.
-			if u.State == string(domain.StateAwaitingMerge) && ur.ReviewedSha != "" && pr.HeadRefOid != "" &&
-				pr.HeadRefOid != ur.ReviewedSha && u.Attention != string(domain.AttentionHeadChanged) {
-				p.flag(ctx, u.ID, domain.AttentionHeadChanged, fmt.Sprintf("%s #%d has commits the review did not see; review it again before merging", ur.FullName, pr.Number))
-			}
-		}
 	}
-	switch {
-	case withPR > 0 && merged == withPR:
-		u, err := p.transition(ctx, u, domain.StateReleasing, "github", "all pull requests merged")
-		if err != nil {
-			return err
-		}
-		return p.enqueue(ctx, JobRelease, u, nil)
-	case withPR > 0 && p.stepMerged(ctx, u):
-		u, err := p.transition(ctx, u, domain.StateReleasing, "github", fmt.Sprintf("merge step %d merged", u.MergeStep+1))
-		if err != nil {
-			return err
-		}
-		return p.enqueue(ctx, JobRelease, u, nil)
-	case len(closed) > 0 && u.Attention != string(domain.AttentionPRClosed):
-		p.flag(ctx, u.ID, domain.AttentionPRClosed, "closed without merging: "+strings.Join(closed, ", "))
-	}
-	return nil
-}
-
-// stepMerged reports whether every pull request of the unit's current merge
-// step, and of the steps before it, is merged: the next step can follow.
-func (p *Pipeline) stepMerged(ctx context.Context, u db.Unit) bool {
-	if u.State != string(domain.StateAwaitingMerge) && u.State != string(domain.StateMerging) {
-		return false
-	}
-	steps, _, err := p.unitSteps(ctx, u)
-	if err != nil || len(steps) < 2 {
-		return false
-	}
-	for _, st := range steps[:int(u.MergeStep)+1] {
-		for _, ur := range st.Repos {
-			if ur.PrNumber > 0 && !merged(ur) {
-				return false
-			}
-		}
-	}
-	return true
+	return p.Store.Q.ListUnitRepos(ctx, u.ID)
 }
 
 // Recover reconciles state left by a previous process. Call once at boot,

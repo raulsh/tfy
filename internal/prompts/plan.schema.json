@@ -36,37 +36,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "merge_plan": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "repos": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "wait_for": {
-            "type": "string",
-            "enum": [
-              "merged",
-              "released",
-              "tagged"
-            ]
-          },
-          "update": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "repos",
-          "wait_for",
-          "update"
-        ],
-        "additionalProperties": false
-      }
     }
   },
   "required": [

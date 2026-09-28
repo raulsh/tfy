@@ -113,6 +113,8 @@ export const attentionLabel: Record<string, string> = {
 	pr_closed: "PR closed",
 	head_changed: "Head changed",
 	partially_merged: "Partially merged",
+	merge_blocked: "Merge stopped",
+	branch_rules: "Branch rules",
 	ci_failed: "CI failed",
 	new_feedback: "New feedback",
 };

@@ -49,8 +49,17 @@ export function useCreateUnit() {
 export function useUnitAction(unitId: string) {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: ({ action, feedback, closePRs }: { action: UnitAction; feedback?: string; closePRs?: boolean }) =>
-			api.post<Unit>(`/units/${unitId}/actions/${action}`, { feedback, close_prs: closePRs }),
+		mutationFn: ({
+			action,
+			feedback,
+			closePRs,
+			admin,
+		}: {
+			action: UnitAction;
+			feedback?: string;
+			closePRs?: boolean;
+			admin?: boolean;
+		}) => api.post<Unit>(`/units/${unitId}/actions/${action}`, { feedback, close_prs: closePRs, admin }),
 		onSettled: () => {
 			qc.invalidateQueries({ queryKey: ["unit", unitId] });
 			qc.invalidateQueries({ queryKey: ["units"] });

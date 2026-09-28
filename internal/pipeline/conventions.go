@@ -387,14 +387,14 @@ func (p *Pipeline) hookCommand(args ...string) string {
 
 // runSettings builds the --settings file of a guarded run: the guard on
 // every shell command, the deny rules, auto mode's trust, tfy's default
-// attribution unless a repository set its own, and, for development, the
-// Stop hook that sends Claude back to commit what it left.
+// attribution unless a repository set its own, and, for development and
+// merge runs, the Stop hook that sends Claude back to commit what it left.
 func (p *Pipeline) runSettings(req runRequest, cp claudeProject, profile claude.Profile) claude.Settings {
 	settings := claude.GuardSettings(p.hookCommand("hook-guard", "--stage", req.Kind), req.Trusted)
 	if !p.Config.CommitAttribution && !cp.RepoAttribution {
 		settings.Attribution = &claude.Attribution{}
 	}
-	if profile.Name == "develop" && len(req.Trusted) > 0 {
+	if (profile.Name == "develop" || profile.Name == "merge") && len(req.Trusted) > 0 {
 		args := []string{"hook-stop"}
 		for _, dir := range req.Trusted {
 			args = append(args, "--dir", filepath.Join(req.Unit.WorkspacePath, dir))

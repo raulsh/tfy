@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "merge",
+        "update",
+        "wait",
+        "blocked"
+      ]
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "wait_for": {
+      "type": "string",
+      "enum": [
+        "",
+        "released",
+        "tagged"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "repos",
+    "wait_for",
+    "reason"
+  ],
+  "additionalProperties": false
+}

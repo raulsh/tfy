@@ -36,7 +36,7 @@ func TestRealClaude(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.p.Runner.Bin, h.p.Config.ClaudeBin = bin, bin
-	for _, kind := range []string{"define", "plan", "develop", "review", "release", "learn", "issue"} {
+	for _, kind := range []string{"define", "plan", "develop", "review", "merge", "release", "learn", "issue"} {
 		h.p.Config.Stages[kind] = config.Stage{Model: "sonnet", Effort: "low", Budget: 1, Timeout: 10 * time.Minute}
 	}
 	// The guard and Stop hooks run the tfy binary from the data directory.
@@ -191,7 +191,12 @@ func goModLine(t *testing.T, dir, module string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(b), "\n") {
+	return goModRequire(string(b), module)
+}
+
+// goModRequire is the line of a go.mod that requires module.
+func goModRequire(goMod, module string) string {
+	for _, line := range strings.Split(goMod, "\n") {
 		if strings.Contains(line, module+" ") {
 			return strings.TrimSpace(line)
 		}
@@ -199,13 +204,13 @@ func goModLine(t *testing.T, dir, module string) string {
 	return ""
 }
 
-// TestRealClaudeMergePlan runs a change across two Go modules, one using
-// the other, with the real Claude Code CLI and Go toolchain against the
-// local fake GitHub: the plan must order the merges, development must pin
-// the dependency's unit-branch commit, and after the dependency is squashed
-// into main the update round must pin the merged commit. Opt-in, like
-// TestRealClaude.
-func TestRealClaudeMergePlan(t *testing.T) {
+// TestRealClaudeMergeRun runs a change across two Go modules, one using the
+// other, with the real Claude Code CLI and Go toolchain against the local
+// fake GitHub. Development must pin the dependency's unit-branch commit.
+// Then one Merge: the merge run must merge the dependency first, and once
+// it is squashed into main, move the pin to the merged commit before the
+// other merges. Opt-in, like TestRealClaude.
+func TestRealClaudeMergeRun(t *testing.T) {
 	if os.Getenv("TFY_REAL_CLAUDE") == "" {
 		t.Skip("set TFY_REAL_CLAUDE=1 to run against the real Claude Code CLI")
 	}
@@ -219,7 +224,7 @@ func TestRealClaudeMergePlan(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.p.Runner.Bin, h.p.Config.ClaudeBin = bin, bin
-	for _, kind := range []string{"define", "plan", "develop", "review", "release", "learn", "issue"} {
+	for _, kind := range []string{"define", "plan", "develop", "review", "merge", "release", "learn", "issue"} {
 		h.p.Config.Stages[kind] = config.Stage{Model: "sonnet", Effort: "low", Budget: 1, Timeout: 10 * time.Minute}
 	}
 	if out, err := exec.Command("go", "build", "-o", h.p.Paths.GuardBin(), "../../cmd/tfy").CombinedOutput(); err != nil {
@@ -250,11 +255,6 @@ func TestRealClaudeMergePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	u = wait(domain.StateSpecReview)
-	plan, _ := h.p.MergePlan(ctx, u)
-	t.Logf("merge plan: %+v", plan)
-	if len(plan.Steps) != 2 || plan.Steps[0].Repos[0] != "acme/api" {
-		t.Fatalf("the plan must merge acme/api first, then acme/app: %+v", plan)
-	}
 	if _, err := h.p.Act(ctx, u.ID, ActionApproveSpec, ActionInput{}); err != nil {
 		t.Fatal(err)
 	}
@@ -278,12 +278,21 @@ func TestRealClaudeMergePlan(t *testing.T) {
 	if _, err := h.p.Act(ctx, u.ID, ActionMerge, ActionInput{}); err != nil {
 		t.Fatal(err)
 	}
-	u = wait(domain.StateAwaitingMerge)
-	merged := loadPRs("acme/api")[0].MergeCommit.Oid
-	second := goModLine(t, appDir, "github.com/acme/api")
-	t.Logf("after step 1 merged as %s, app requires: %s", merged[:12], second)
-	if u.MergeStep != 1 || !strings.Contains(second, merged[:12]) {
-		t.Errorf("the update round must pin the merged commit %s, got %q (step %d)", merged[:12], second, u.MergeStep)
+	u = wait(domain.StateDone)
+	acts, _ := h.st.Q.ListUnitActivity(ctx, db.ListUnitActivityParams{UnitID: store.NullString(u.ID), Lim: 200})
+	for i := len(acts) - 1; i >= 0; i-- {
+		if a := acts[i]; a.Kind == "merge" || a.Kind == "pr" && strings.HasPrefix(a.Message, "merged ") {
+			t.Logf("%s: %s", a.Kind, a.Message)
+		}
+	}
+	mergedAPI := loadPRs("acme/api")[0].MergeCommit.Oid
+	goMod, err := exec.Command("git", "-C", filepath.Join(h.remotes, "acme", "app.git"), "show", "main:go.mod").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("api merged as %s; app's main requires: %s", mergedAPI[:12], goModRequire(string(goMod), "github.com/acme/api"))
+	if !strings.Contains(string(goMod), mergedAPI[:12]) {
+		t.Errorf("app must merge with its pin moved to api's merge commit %s:\n%s", mergedAPI[:12], goMod)
 	}
 	build := exec.Command("go", "build", "./...")
 	build.Dir = appDir
@@ -292,10 +301,6 @@ func TestRealClaudeMergePlan(t *testing.T) {
 		t.Errorf("app no longer builds with its pinned api: %v\n%s", err, out)
 	}
 
-	if _, err := h.p.Act(ctx, u.ID, ActionMerge, ActionInput{}); err != nil {
-		t.Fatal(err)
-	}
-	u = wait(domain.StateDone)
 	runs, _ := h.st.Q.ListRuns(ctx, db.ListRunsParams{UnitID: u.ID, Lim: 50})
 	total := 0.0
 	for i := len(runs) - 1; i >= 0; i-- {

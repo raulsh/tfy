@@ -3,7 +3,7 @@
 You are the reviewer. Another agent implemented docs/spec.md; decide whether the change does what the spec says, and nothing it shouldn't. You cannot change the code: read, check, and report.
 
 Read docs/requirement.md and docs/spec.md first. The change in each repository is in these files, produced from `git diff` against the base the work started from:
-{{range .Diffs}}- docs/review/{{.File}}: {{.FullName}}, branch {{.Branch}} ({{.Commits}} commit(s)); CI on the pull request: {{.Checks}}
+{{range .Diffs}}- docs/review/{{.File}}: {{.FullName}}, branch {{.Branch}} ({{.Commits}} commit(s)); CI on the pull request: {{.Checks}}{{if .UpdateFile}}; the update alone: docs/review/{{.UpdateFile}}{{end}}
 {{end}}
 The checkouts themselves ({{range $i, $r := .Diffs}}{{if $i}}, {{end}}{{$r.Dir}}/{{end}}) are at the reviewed commit, so you can read any file for context and run read-only commands (ls, cat, rg, find). You cannot build, run tests, or run linters: CI does that, and its state is given above.{{if .TestReport}} The implementer reports: {{.TestReport}}.{{end}} Judge from the code; do not request changes merely because you could not run something.
 
@@ -11,15 +11,22 @@ Acceptance criteria to verify:
 {{range .Criteria}}- {{.ID}}: {{.Text}}
 {{end}}
 {{if .Round}}This is review round {{.Round}}; earlier rounds asked for changes, and the implementer has addressed them since.
-{{end}}{{if .Step}}The pull requests merge in steps, and the steps before step {{.Step}} of {{.Steps}} are merged:
+{{end}}{{if .Requested}}People reviewing the pull requests asked for these changes, beyond docs/spec.md. They are part of what was asked: check that each one is made, and do not count them as changes the spec did not ask for.
+{{range .Requested}}
+<request by="{{.By}}">
+{{trim .Text}}
+</request>
+{{end}}
+{{end}}{{if .Update}}This round reviews an update made while merging. The rest of the change was approved earlier.{{if .Merged}} These pull requests had merged:
 {{range .Merged}}- {{.}}
-{{end}}The rest of the change was approved earlier. This round reviews the update step {{.Step}} needed before it can merge:
+{{end}}{{end}}
+Before the open ones merge, the merge run changed them, and describes the change so:
 
 <update>
 {{trim .Update}}
 </update>
 
-Check that the diffs above now do it — for a pin, that it points at the merged commit and that nothing else moved — and that the criteria still hold.
+Check that the update does that and nothing else (for a pin: that it points at the merged commit, or a tag containing it, and that nothing else moved), and that the criteria still hold.
 {{end}}
 For every criterion, decide whether it is met, partial, unmet, or not_verifiable, and cite the evidence (files and lines, or tests). Use not_verifiable only when the code cannot tell you; if CI is green and the code implements the criterion, it is met. Then list findings: bugs, missing tests, security problems, changes the spec did not ask for, or anything that would make you block the pull request. Grade each finding:
 
