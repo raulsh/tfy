@@ -145,6 +145,20 @@ export interface UnitDetail extends Unit {
 	activity: Activity[];
 	feedback: Feedback[];
 	issues: LinkedIssue[];
+	artifacts: Artifact[];
+}
+
+// One version of a file the define or plan run made under docs/artifacts,
+// such as a mockup.
+export interface Artifact {
+	path: string;
+	version: number;
+	content_type: string;
+	size: number;
+	removed?: boolean;
+	author: string;
+	run_id: string;
+	created_at: string;
 }
 
 export type FeedbackStatus =

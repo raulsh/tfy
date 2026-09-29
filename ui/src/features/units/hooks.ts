@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/shared/api/client";
 import type {
+	Artifact,
 	DocumentMeta,
 	LinkedIssue,
 	RunOverrides,
@@ -37,6 +38,28 @@ export function useDocument(unitId: string | undefined, kind: string, version?: 
 	});
 }
 
+export function useArtifactVersions(unitId: string, path: string | undefined, latest: number | undefined) {
+	return useQuery({
+		queryKey: ["artifact-versions", unitId, path, latest],
+		queryFn: () => api.get<Artifact[]>(`/units/${unitId}/artifact-versions${query({ path })}`),
+		enabled: !!path,
+	});
+}
+
+// An artifact's text, for the ones shown as Markdown or as code.
+export function useArtifactText(url: string | undefined) {
+	return useQuery({
+		queryKey: ["artifact-text", url],
+		queryFn: async () => {
+			const res = await fetch(url ?? "", { credentials: "same-origin" });
+			if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+			return res.text();
+		},
+		enabled: !!url,
+		staleTime: Number.POSITIVE_INFINITY,
+	});
+}
+
 export interface NewUnit {
 	project_id: string;
 	kind: string;
@@ -63,12 +86,15 @@ export function useUnitAction(unitId: string) {
 			feedback,
 			closePRs,
 			admin,
+			artifact,
 		}: {
 			action: UnitAction;
 			feedback?: string;
 			closePRs?: boolean;
 			admin?: boolean;
-		}) => api.post<Unit>(`/units/${unitId}/actions/${action}`, { feedback, close_prs: closePRs, admin }),
+			// The artifact a revision is about.
+			artifact?: string;
+		}) => api.post<Unit>(`/units/${unitId}/actions/${action}`, { feedback, close_prs: closePRs, admin, artifact }),
 		onSettled: () => {
 			qc.invalidateQueries({ queryKey: ["unit", unitId] });
 			qc.invalidateQueries({ queryKey: ["units"] });

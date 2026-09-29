@@ -47,3 +47,9 @@ export function compact(n: number): string {
 	if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
 	return `${(n / 1_000_000).toFixed(1)}M`;
 }
+
+export function bytes(n: number): string {
+	if (n < 1024) return `${n} B`;
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+	return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}

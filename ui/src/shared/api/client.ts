@@ -43,6 +43,11 @@ export function streamURL(path: string): string {
 	return BASE + path;
 }
 
+// The file itself, for a frame, an image or a new tab.
+export function artifactURL(unitId: string, path: string, version: number): string {
+	return `${BASE}/units/${unitId}/artifacts/${version}/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export function query(params: Record<string, string | number | undefined | null>): string {
 	const q = new URLSearchParams();
 	for (const [k, v] of Object.entries(params)) {

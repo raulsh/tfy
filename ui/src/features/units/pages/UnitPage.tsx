@@ -1,5 +1,13 @@
 import { Spin, Tabs } from "antd";
-import { Activity as ActivityIcon, FileCode2, FileText, GitPullRequest, LayoutList, Rocket } from "lucide-react";
+import {
+	Activity as ActivityIcon,
+	FileCode2,
+	FileText,
+	GitPullRequest,
+	LayoutList,
+	Rocket,
+	Shapes,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { RunsTable } from "@/features/runs/components/RunsTable";
@@ -9,6 +17,7 @@ import { Card } from "@/shared/components/OverlayDrawer";
 import { usd } from "@/shared/lib/format";
 import { kindLabel, originLabel, stageLabel, toneColor, unitTone } from "@/shared/lib/status";
 import { ActivityList } from "../components/ActivityList";
+import { ArtifactsPanel } from "../components/ArtifactsPanel";
 import { DocumentPanel } from "../components/DocumentPanel";
 import { ExecutionPanel } from "../components/ExecutionPanel";
 import { IssuesCard } from "../components/IssuesCard";
@@ -125,6 +134,14 @@ export default function UnitPage() {
 							label: tabLabel(<FileText size={15} />, "Requirement", docBadge(unit.documents.requirement?.version)),
 						},
 						{ key: "spec", label: tabLabel(<FileCode2 size={15} />, "Spec", docBadge(unit.documents.spec?.version)) },
+						...(unit.artifacts.length > 0
+							? [
+									{
+										key: "artifacts",
+										label: tabLabel(<Shapes size={15} />, "Artifacts", docBadge(unit.artifacts.length, "")),
+									},
+								]
+							: []),
 						{
 							key: "execution",
 							label: tabLabel(
@@ -223,6 +240,7 @@ export default function UnitPage() {
 				)}
 				{tab === "requirement" && <DocumentPanel unit={unit} kind="requirement" />}
 				{tab === "spec" && <DocumentPanel unit={unit} kind="spec" />}
+				{tab === "artifacts" && <ArtifactsPanel unit={unit} />}
 				{tab === "execution" && <ExecutionPanel unit={unit} />}
 				{tab === "release" && <ReleasePanel unit={unit} />}
 				{tab === "runs" && (

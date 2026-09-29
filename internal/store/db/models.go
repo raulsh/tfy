@@ -20,6 +20,21 @@ type Activity struct {
 	Data      string         `json:"data"`
 }
 
+type Artifact struct {
+	ID          string    `json:"id"`
+	UnitID      string    `json:"unit_id"`
+	Path        string    `json:"path"`
+	Version     int64     `json:"version"`
+	Content     []byte    `json:"content"`
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	Sha256      string    `json:"sha256"`
+	Removed     bool      `json:"removed"`
+	Author      string    `json:"author"`
+	RunID       string    `json:"run_id"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Document struct {
 	ID        string    `json:"id"`
 	UnitID    string    `json:"unit_id"`

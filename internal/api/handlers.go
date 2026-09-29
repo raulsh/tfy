@@ -49,6 +49,7 @@ func (s *Server) routes(r fiber.Router) {
 	r.Get("/events", s.globalStream())
 	s.intakeRoutes(r)
 	s.issueRoutes(r)
+	s.artifactRoutes(r)
 }
 
 func limit(c fiber.Ctx, def, max int) int64 {
@@ -337,6 +338,7 @@ type UnitDetail struct {
 	Activity  []ActivityView          `json:"activity"`
 	Feedback  []FeedbackView          `json:"feedback"`
 	Issues    []IssueView             `json:"issues"`
+	Artifacts []ArtifactView          `json:"artifacts"`
 }
 
 func (s *Server) getUnit(c fiber.Ctx) error {
@@ -387,6 +389,9 @@ func (s *Server) getUnit(c fiber.Ctx) error {
 		d.Activity = append(d.Activity, activityView(a))
 	}
 	if d.Issues, err = s.unitIssueViews(c, u.ID); err != nil {
+		return err
+	}
+	if d.Artifacts, err = s.unitArtifacts(c, u.ID); err != nil {
 		return err
 	}
 	return ok(c, d)

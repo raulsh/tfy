@@ -165,6 +165,11 @@ func fakeClaude() int {
 		out = map[string]any{"title": "Report degraded health", "kind": "bugfix", "summary": "Health should say degraded.", "open_questions": []string{}}
 	case strings.Contains(schema, "acceptance_criteria"):
 		_ = os.WriteFile("docs/spec.md", []byte("# Spec\n\n## Acceptance criteria\n- AC-1: returns degraded\n"), 0o644)
+		// $FAKE_CONTROL/artifacts/ becomes docs/artifacts/, links and all.
+		if src := filepath.Join(os.Getenv("FAKE_CONTROL"), "artifacts"); fileExists(src) {
+			_ = os.RemoveAll("docs/artifacts")
+			_ = exec.Command("cp", "-a", src, "docs/artifacts").Run()
+		}
 		out = map[string]any{"summary": "Return 200 degraded.", "target_repos": gitDirs(cwd)[:1],
 			"acceptance_criteria": []map[string]string{{"id": "AC-1", "text": "returns degraded"}}, "new_dependencies": []string{}}
 		// $FAKE_CONTROL/plan.json replaces the plan's output.

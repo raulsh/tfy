@@ -135,6 +135,7 @@ type Define struct {
 	Feedback       []Feedback
 	Issues         []Issue
 	Revision       string // reviewer feedback when iterating
+	Artifact       string // the file under docs/artifacts the feedback is about
 	EditedByUser   bool
 }
 
@@ -145,6 +146,7 @@ type Plan struct {
 	Repos        []Repo
 	Issues       []Issue
 	Revision     string
+	Artifact     string
 	EditedByUser bool
 }
 

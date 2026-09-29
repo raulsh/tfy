@@ -15,10 +15,13 @@ import (
 
 type definePayload struct {
 	Revision string `json:"revision,omitempty"`
+	// Artifact is the file under docs/artifacts the revision is about.
+	Artifact string `json:"artifact,omitempty"`
 }
 
 type planPayload struct {
 	Revision string `json:"revision,omitempty"`
+	Artifact string `json:"artifact,omitempty"`
 }
 
 type developPayload struct {
@@ -69,6 +72,7 @@ func (p *Pipeline) define(ctx context.Context, job db.Job, u db.Unit) error {
 		Feedback:       p.unitFeedback(ctx, u),
 		Issues:         promptIssues(p.unitIssues(ctx, u, true)),
 		Revision:       payload.Revision,
+		Artifact:       payload.Artifact,
 		EditedByUser:   p.editedByUser(ctx, u, DocRequirement),
 	}
 	req := runRequest{Unit: u, Kind: "define", Schema: prompts.Schema("define")}
@@ -94,6 +98,9 @@ func (p *Pipeline) define(ctx context.Context, job db.Job, u db.Unit) error {
 	var meta defineMeta
 	_ = json.Unmarshal([]byte(run.Result), &meta)
 	if _, err := p.snapshotDoc(ctx, u, DocRequirement, run.Result, run.ID); err != nil {
+		return err
+	}
+	if err := p.snapshotArtifacts(ctx, u, "claude", run.ID); err != nil {
 		return err
 	}
 	// A person named a developer's unit, and an issue names its own; only
@@ -130,6 +137,7 @@ func (p *Pipeline) plan(ctx context.Context, job db.Job, u db.Unit) error {
 		Repos:        promptRepos(urs, ""),
 		Issues:       promptIssues(p.unitIssues(ctx, u, true)),
 		Revision:     payload.Revision,
+		Artifact:     payload.Artifact,
 		EditedByUser: p.editedByUser(ctx, u, DocSpec),
 	}
 	req := runRequest{Unit: u, Kind: "plan", Schema: prompts.Schema("plan")}
@@ -156,6 +164,9 @@ func (p *Pipeline) plan(ctx context.Context, job db.Job, u db.Unit) error {
 		return fmt.Errorf("the plan run returned no usable structured output: %w", err)
 	}
 	if _, err := p.snapshotDoc(ctx, u, DocSpec, run.Result, run.ID); err != nil {
+		return err
+	}
+	if err := p.snapshotArtifacts(ctx, u, "claude", run.ID); err != nil {
 		return err
 	}
 	if err := p.markTargets(ctx, u, urs, meta.TargetRepos); err != nil {

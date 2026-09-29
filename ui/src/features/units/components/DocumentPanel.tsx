@@ -1,6 +1,7 @@
 import { App, Button, Input, Select, Space, Spin } from "antd";
 import { FileText, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import type { UnitDetail } from "@/shared/api/types";
 import { EmptyState, Markdown, Mono } from "@/shared/components/misc";
 import { Card } from "@/shared/components/OverlayDrawer";
@@ -126,6 +127,17 @@ export function DocumentPanel({ unit, kind }: { unit: UnitDetail; kind: "require
 			<div>
 				{kind === "spec" && (
 					<>
+						{unit.artifacts.length > 0 && (
+							<Card title="Artifacts">
+								<Space direction="vertical" size={4}>
+									{unit.artifacts.map((a) => (
+										<Link key={a.path} to={`?tab=artifacts&artifact=${encodeURIComponent(a.path)}`}>
+											{a.path} <span className="faint">v{a.version}</span>
+										</Link>
+									))}
+								</Space>
+							</Card>
+						)}
 						<Card title="Acceptance criteria">
 							{meta.acceptance_criteria?.length ? (
 								<ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 8 }}>

@@ -6,6 +6,10 @@ docs/spec.md holds the current version{{if .EditedByUser}}, which the user has e
 <user-feedback>
 {{trim .Revision}}
 </user-feedback>
+{{if .Artifact}}
+The feedback is about docs/artifacts/{{.Artifact}}: change that file, and the spec where it refers to it.
+{{end}}
+Files for people to look at, such as mockups or diagrams, belong under docs/artifacts/, where tfy shows them next to the spec. HTML there must be self-contained: tfy loads nothing from the network for it.
 
 Then return the structured output again, reflecting the revised specification.
 {{- else -}}
@@ -33,6 +37,8 @@ Write the specification to docs/spec.md. A developer who has never seen the requ
     ## Acceptance criteria      AC-1, AC-2, …: each one verifiable from the diff or by running the tests; together they cover every R-n of the requirement
     ## Merge order              only when the pull requests cannot all merge at once; see below
     ## Risks and rollout
+
+If people need to see something to judge the plan, such as a mockup of a screen, a diagram, or a sample payload, add it as a file under docs/artifacts/ and refer to it from the spec by that path. tfy shows these files next to the spec, and people can ask for changes to each one. HTML is shown in a sandboxed frame that loads nothing from the network, so make each page self-contained: CSS, scripts, fonts and images inline (images as data: URIs or inline SVG). A mockup of an existing product should use its real layout, components and wording, taken from the code. Keep each file under 10 MB. Most specs need no artifact.
 
 Some changes across repositories cannot merge at once: a shared module must be merged before the repositories that use it can pin its merged commit, or a service must be deployed before the clients that need it. Then write a "Merge order" section. Say which repositories merge first, what the next ones wait for, and what must change in them once that is so. They can wait for the earlier ones to be merged; released, meaning CI and deploys succeeded on their merge commits; or tagged, meaning a tag contains their merge commits, for dependencies consumed by version. A change could be "pin github.com/acme/api to the commit it merged as". When the change is approved for merging, tfy's merge run follows this section: it merges in that order, makes those changes, and has them reviewed. During development, a repository can already depend on another one's commit on the unit's branch, because the workspace serves its checkouts as dependencies.
 

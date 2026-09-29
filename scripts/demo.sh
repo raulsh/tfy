@@ -48,6 +48,41 @@ cat > "$DEMO/control/issue.json" <<'JSON'
  "title": "Checkout shows a blank page after pressing Pay on Safari 17",
  "body": "Pressing Pay on Safari leaves a blank page.\n\n### Affected\nSafari 17 on macOS and iPadOS.\n\n### Expected\nThe payment form opens."}
 JSON
+# What the plan run leaves in docs/artifacts: a mockup, shown next to the spec.
+mkdir -p "$DEMO/control/artifacts"
+cat > "$DEMO/control/artifacts/health-page.html" <<'HTML'
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Health page</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2328; }
+  header { background: #fff; border-bottom: 1px solid #d0d7de; padding: 14px 24px; font-weight: 600; }
+  main { padding: 24px; display: grid; gap: 16px; max-width: 760px; }
+  .banner { background: #fff4d6; border: 1px solid #e3b341; border-radius: 6px; padding: 12px 16px; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 16px; }
+  button { font: inherit; padding: 4px 10px; }
+  .ok { color: #1a7f37; } .degraded { color: #9a6700; }
+</style></head>
+<body>
+  <header>Acme · Status</header>
+  <main>
+    <div class="banner" id="banner">The database is unreachable: some pages may be slow.</div>
+    <div class="card">
+      <p>API: <b class="ok">ok</b></p>
+      <p>Database: <b class="degraded" id="db">degraded</b></p>
+      <button onclick="toggle()">Simulate recovery</button>
+    </div>
+  </main>
+  <script>
+    function toggle() {
+      const db = document.getElementById("db");
+      const up = db.textContent === "degraded";
+      db.textContent = up ? "ok" : "degraded";
+      db.className = up ? "ok" : "degraded";
+      document.getElementById("banner").hidden = up;
+    }
+  </script>
+</body></html>
+HTML
 go build -o "$DEMO/tfy" ./cmd/tfy
 
 export TFY_HOME="$DEMO/home"

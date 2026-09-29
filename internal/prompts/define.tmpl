@@ -6,7 +6,9 @@ docs/requirement.md holds the current version{{if .EditedByUser}}, which the use
 <user-feedback>
 {{trim .Revision}}
 </user-feedback>
-
+{{if .Artifact}}
+The feedback is about docs/artifacts/{{.Artifact}}: change that file, and the requirement where it refers to it.
+{{end}}
 Then return the structured output again, reflecting the revised document.
 {{- else -}}
 # Define the requirement for {{.Label}}

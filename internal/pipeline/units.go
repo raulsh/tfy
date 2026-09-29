@@ -158,6 +158,9 @@ type ActionInput struct {
 	// Admin, on merge, merges as a GitHub administrator: the base branch's
 	// rules, such as required approvals, are bypassed for this merge.
 	Admin bool `json:"admin"`
+	// Artifact, on iterate while the requirement or spec is in review,
+	// names the file under docs/artifacts the feedback is about.
+	Artifact string `json:"artifact"`
 }
 
 // AvailableActions lists what a person can do with a unit now.
@@ -275,24 +278,35 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 	case ActionIterate:
 		feedback := strings.TrimSpace(in.Feedback)
 		if state == domain.StateReviewing || state == domain.StateAwaitingMerge {
+			if strings.TrimSpace(in.Artifact) != "" {
+				return u, &InvalidError{Msg: "artifacts are revised while the requirement or the spec is in review"}
+			}
 			return u, p.requestChanges(ctx, u, feedback, actor)
 		}
 		if feedback == "" {
 			return u, &InvalidError{Msg: "say what should change"}
+		}
+		artifact := strings.TrimSpace(in.Artifact)
+		if artifact != "" && !p.currentArtifact(ctx, u, artifact) {
+			return u, &InvalidError{Msg: fmt.Sprintf("%s has no artifact %s", domain.Label(u.Seq), artifact)}
+		}
+		note := feedback
+		if artifact != "" {
+			note = fmt.Sprintf("about %s: %s", artifact, feedback)
 		}
 		switch state {
 		case domain.StateDefinitionReview:
 			if u, err = p.transition(ctx, u, domain.StateDefining, actor, "revision requested"); err != nil {
 				return u, err
 			}
-			p.activity(ctx, u.ID, actor, "feedback", feedback, nil)
-			return u, p.enqueue(ctx, JobDefine, u, definePayload{Revision: feedback})
+			p.activity(ctx, u.ID, actor, "feedback", note, nil)
+			return u, p.enqueue(ctx, JobDefine, u, definePayload{Revision: feedback, Artifact: artifact})
 		case domain.StateSpecReview:
 			if u, err = p.transition(ctx, u, domain.StatePlanning, actor, "revision requested"); err != nil {
 				return u, err
 			}
-			p.activity(ctx, u.ID, actor, "feedback", feedback, nil)
-			return u, p.enqueue(ctx, JobPlan, u, planPayload{Revision: feedback})
+			p.activity(ctx, u.ID, actor, "feedback", note, nil)
+			return u, p.enqueue(ctx, JobPlan, u, planPayload{Revision: feedback, Artifact: artifact})
 		}
 
 	case ActionOverride:
@@ -409,6 +423,9 @@ func (p *Pipeline) reopen(ctx context.Context, u db.Unit, actor string) (db.Unit
 		} else {
 			to = domain.StateSpecReview
 		}
+	}
+	if err := p.restoreArtifacts(ctx, u); err != nil {
+		return u, err
 	}
 	return p.transition(ctx, u, to, actor, "reopened")
 }
