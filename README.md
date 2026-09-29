@@ -32,10 +32,25 @@ It runs locally. `tfy serve` is the backend and serves the UI on `127.0.0.1`; `t
 - [slk](https://github.com/raulsh/slk), signed in (`slk configure`); optional, needed only for Slack feedback intake
 - To build: Go 1.26 and pnpm
 
+## Install
+
+Every [release](https://github.com/raulsh/tfy/releases) has a `.deb` and a tarball for Linux, amd64 and arm64. Swap `amd64` for `arm64` below as needed.
+
+```sh
+# Debian and Ubuntu
+gh release download -R raulsh/tfy -p '*_amd64.deb'
+sudo apt install ./tfy_*_amd64.deb
+
+# Any Linux: the binary alone, into ~/.local/bin
+gh release download -R raulsh/tfy -p '*_linux_amd64.tar.gz'
+tar -xzf tfy_*_linux_amd64.tar.gz -C ~/.local/bin tfy
+```
+
+From source, `make install` builds the UI and the binary into `~/.local/bin`.
+
 ## Quick start
 
 ```sh
-make install            # builds the UI and the binary into ~/.local/bin
 tfy init         # creates ~/.tfy (moves ~/.thefactory there, if you used the old name)
 tfy doctor       # checks claude, gh, git, slk
 tfy serve --open # prints a link with a token, and opens it
@@ -121,6 +136,8 @@ make dev    # Go server with --dev on :7420, plus Vite on :5174 with hot reload
 make test   # go test -race, tsc, biome
 make demo   # full pipeline on fakes
 ```
+
+To release, push a tag: `git tag v0.1.0 && git push origin v0.1.0`. The release workflow runs the tests, then GoReleaser (`.goreleaser.yaml`) builds the binaries and `.deb` packages and publishes them with a changelog. `goreleaser release --snapshot --clean` builds the same locally, into `dist/`.
 
 | Path | What it holds |
 |---|---|

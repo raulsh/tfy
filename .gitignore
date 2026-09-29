@@ -6,3 +6,4 @@ internal/web/dist/*
 *.test
 coverage.out
 .claude/settings.local.json
+/dist/

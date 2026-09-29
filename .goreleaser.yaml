@@ -1,0 +1,54 @@
+# Releases: a tarball and a .deb per architecture, built by
+# .github/workflows/release.yml when a v* tag is pushed. Try it locally with
+# `goreleaser release --snapshot --clean`; the output lands in dist/.
+version: 2
+project_name: tfy
+
+before:
+  hooks:
+    # The UI is embedded in the binary.
+    - pnpm -C ui install --frozen-lockfile
+    - pnpm -C ui build
+
+builds:
+  - main: ./cmd/tfy
+    binary: tfy
+    env:
+      - CGO_ENABLED=0 # SQLite is modernc.org/sqlite, pure Go
+    # Linux only: runs are tied to tfy's life with Pdeathsig.
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/raulsh/tfy/internal/cli.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [README.md]
+
+nfpms:
+  - package_name: tfy
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+    formats: [deb]
+    bindir: /usr/bin
+    maintainer: raulsh <ralsalamanca@gmail.com>
+    homepage: https://github.com/raulsh/tfy
+    description: |-
+      Takes units of work from feedback to merged pull requests.
+      tfy drives the Claude Code CLI headless through definition, planning,
+      development, review, merge and release, with a local web UI.
+    section: devel
+    dependencies: [git]
+    # Claude Code is installed on its own; gh comes from Debian or GitHub's
+    # apt repository.
+    recommends: [gh]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs", "^test", "^chore", "^ci", "^build"]

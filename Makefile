@@ -46,5 +46,5 @@ install: build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/tfy
 
 clean:
-	rm -rf bin tmp
+	rm -rf bin tmp dist
 	find internal/web/dist -mindepth 1 ! -name .gitkeep -delete
