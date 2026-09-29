@@ -199,7 +199,7 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 		}
 	}
 	metaJSON, _ := json.Marshal(meta)
-	doc, err := p.saveDoc(ctx, u, DocReview, renderReview(u, meta), string(metaJSON), "claude", run.ID)
+	doc, err := p.saveDoc(ctx, u, DocReview, renderReview(meta), string(metaJSON), "claude", run.ID)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func (p *Pipeline) requestChanges(ctx context.Context, u db.Unit, feedback, acto
 			}
 		}
 		raw, _ := json.Marshal(req)
-		if _, err := p.saveDoc(ctx, u, DocReview, renderReview(u, req), string(raw), actor, ""); err != nil {
+		if _, err := p.saveDoc(ctx, u, DocReview, renderReview(req), string(raw), actor, ""); err != nil {
 			return err
 		}
 	}
@@ -443,14 +443,7 @@ func findingsBrief(m ReviewMeta) string {
 		if f.Severity == "nit" {
 			continue
 		}
-		loc := f.Repo
-		if f.File != "" {
-			loc += "/" + f.File
-			if f.Line > 0 {
-				loc += fmt.Sprintf(":%d", f.Line)
-			}
-		}
-		fmt.Fprintf(&b, "- [%s] %s: %s\n", f.Severity, loc, f.Message)
+		fmt.Fprintf(&b, "- [%s] %s: %s\n", f.Severity, findingPlace(f), f.Message)
 	}
 	if b.Len() == 0 {
 		b.WriteString("- " + m.Summary + "\n")
@@ -458,46 +451,43 @@ func findingsBrief(m ReviewMeta) string {
 	return b.String()
 }
 
-// renderReview writes the review as markdown, for people and pull requests.
-func renderReview(u db.Unit, m ReviewMeta) string {
+// renderReview writes the review as the comment posted on the pull
+// requests: the verdict with the reviewer's summary and, when it asks for
+// changes, only what sent the work back. The criteria and every finding
+// stay in tfy.
+func renderReview(m ReviewMeta) string {
 	if m.By != "" {
-		return fmt.Sprintf("# Changes requested by %s\n\n%s\n\n---\n%s · requested in tfy\n", m.By, strings.TrimSpace(m.Summary), domain.Label(u.Seq))
+		return fmt.Sprintf("**Changes requested by %s**\n\n%s\n", m.By, strings.TrimSpace(m.Summary))
 	}
 	var b strings.Builder
-	verdict := "✅ Approved"
-	if m.Decision != "approve" {
-		verdict = "🔁 Changes requested"
+	if m.Decision == "approve" {
+		fmt.Fprintf(&b, "✅ **Approved** · review round %d\n\n%s\n", m.Round, strings.TrimSpace(m.Summary))
+		return b.String()
 	}
-	fmt.Fprintf(&b, "# Review round %d — %s\n\n%s\n\n", m.Round, verdict, m.Summary)
-	texts := map[string]string{}
-	for _, c := range m.Spec {
-		texts[c.ID] = c.Text
-	}
-	if len(m.Criteria) > 0 {
-		b.WriteString("## Acceptance criteria\n\n| | Criterion | Status | Evidence |\n|---|---|---|---|\n")
-		for _, c := range m.Criteria {
-			mark := map[string]string{"met": "✅", "partial": "🟡", "unmet": "❌", "not_verifiable": "❔"}[c.Status]
-			fmt.Fprintf(&b, "| %s | **%s** %s | %s | %s |\n", mark, c.ID, cell(texts[c.ID]), strings.ReplaceAll(c.Status, "_", " "), cell(c.Evidence))
+	fmt.Fprintf(&b, "🔁 **Changes requested** · review round %d\n\n%s\n\n", m.Round, strings.TrimSpace(m.Summary))
+	for _, c := range m.Criteria {
+		if c.Status == "unmet" || c.Status == "partial" {
+			fmt.Fprintf(&b, "- %s is %s: %s\n", c.ID, c.Status, c.Evidence)
 		}
-		b.WriteString("\n")
 	}
-	if len(m.Findings) > 0 {
-		b.WriteString("## Findings\n\n")
-		for _, f := range m.Findings {
-			loc := f.File
-			if f.Line > 0 {
-				loc += fmt.Sprintf(":%d", f.Line)
-			}
-			fmt.Fprintf(&b, "- **%s** `%s` %s — %s\n", f.Severity, f.Repo, loc, f.Message)
+	for _, f := range m.Findings {
+		if f.Severity == "blocker" || f.Severity == "major" {
+			fmt.Fprintf(&b, "- **%s** `%s`: %s\n", f.Severity, findingPlace(f), f.Message)
 		}
-		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "---\n%s · reviewed by tfy\n", domain.Label(u.Seq))
 	return b.String()
 }
 
-func cell(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, "|", "\\|"), "\n", " ")
+// findingPlace is where a finding is, as repo/file:line.
+func findingPlace(f Finding) string {
+	loc := f.Repo
+	if f.File != "" {
+		loc += "/" + f.File
+		if f.Line > 0 {
+			loc += fmt.Sprintf(":%d", f.Line)
+		}
+	}
+	return loc
 }
 
 // postReview comments the review on each pull request, when the project

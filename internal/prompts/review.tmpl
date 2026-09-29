@@ -37,4 +37,4 @@ For every criterion, decide whether it is met, partial, unmet, or not_verifiable
 
 Be strict about the criteria and fair about everything else: do not invent requirements the spec does not state.
 
-Return the structured output: verdict ("request_changes" when a criterion is unmet or partial, or a finding is blocker or major; otherwise "approve"), the criteria with status and evidence, the findings, and a short summary written for the person who will merge.
+Return the structured output: verdict ("request_changes" when a criterion is unmet or partial, or a finding is blocker or major; otherwise "approve"), the criteria with status and evidence, the findings, and a summary for the person who will merge. The summary is posted on the pull requests, so keep it to one to three sentences: when you approve, why the change is ready; when you request changes, what is wrong. The criteria and findings hold the details, so don't repeat them there, and don't list what you checked.

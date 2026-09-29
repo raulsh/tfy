@@ -889,8 +889,11 @@ func TestUnitFromIdeaToMergedPR(t *testing.T) {
 	if err := json.Unmarshal([]byte(review.Meta), &rm); err != nil || rm.Decision != "approve" || rm.Round != 1 {
 		t.Fatalf("review meta = %s (%v)", review.Meta, err)
 	}
-	if !strings.Contains(review.Content, "Approved") || !strings.Contains(review.Content, "AC-1") {
+	if !strings.Contains(review.Content, "Approved") || strings.Contains(review.Content, "AC-1") {
 		t.Errorf("review document:\n%s", review.Content)
+	}
+	if len(rm.Criteria) != 1 || rm.Criteria[0].ID != "AC-1" {
+		t.Errorf("the criteria stay in the review's meta: %+v", rm.Criteria)
 	}
 	urs, _ = h.st.Q.ListUnitRepos(ctx, u.ID)
 	ur := urs[0]

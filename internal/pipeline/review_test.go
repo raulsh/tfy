@@ -148,3 +148,38 @@ func TestRequestChangesLeavesMergedRepositoriesAlone(t *testing.T) {
 		t.Errorf("only the open pull request is reviewed again:\n%s", review)
 	}
 }
+
+// The review posted on the pull requests is short: an approval says why,
+// a request for changes says only what sent the work back.
+func TestReviewCommentIsBrief(t *testing.T) {
+	criteria := []CriterionVerdict{
+		{ID: "AC-1", Status: "met", Evidence: "health.go:12 returns degraded"},
+		{ID: "AC-2", Status: "unmet", Evidence: "no test covers the timeout"},
+		{ID: "AC-3", Status: "not_verifiable", Evidence: "needs a live database"},
+	}
+	findings := []Finding{
+		{Severity: "major", Repo: "acme/app", File: "health.go", Line: 30, Message: "the error is swallowed"},
+		{Severity: "minor", Repo: "acme/app", File: "health.go", Message: "rename err2"},
+		{Severity: "nit", Repo: "acme/app", Message: "trailing space"},
+	}
+
+	approved := renderReview(ReviewMeta{Decision: "approve", Round: 1, Summary: "Ready: health reports degraded when the database is down.",
+		Criteria: criteria[:1], Findings: findings[1:]})
+	if approved != "✅ **Approved** · review round 1\n\nReady: health reports degraded when the database is down.\n" {
+		t.Errorf("approval:\n%s", approved)
+	}
+
+	changes := renderReview(ReviewMeta{Decision: "request_changes", Round: 2, Summary: "The timeout path is untested and hides the error.",
+		Criteria: criteria, Findings: findings})
+	for _, want := range []string{"🔁 **Changes requested** · review round 2", "The timeout path is untested",
+		"- AC-2 is unmet: no test covers the timeout", "- **major** `acme/app/health.go:30`: the error is swallowed"} {
+		if !strings.Contains(changes, want) {
+			t.Errorf("request for changes is missing %q:\n%s", want, changes)
+		}
+	}
+	for _, noise := range []string{"AC-1", "AC-3", "rename err2", "trailing space", "|", "tfy"} {
+		if strings.Contains(changes, noise) {
+			t.Errorf("request for changes has %q:\n%s", noise, changes)
+		}
+	}
+}
