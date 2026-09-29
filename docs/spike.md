@@ -111,3 +111,34 @@ Seen for real on a unit across five repositories: the first version stored a mer
 So merging is now a run of its own, `merge`: Bash, Read, Write and Edit in auto mode, trusted in the open pull requests' checkouts only, guarded, with the Stop hook. It resumes its session between decisions within one merge and returns one structured decision at a time: merge, update, wait, or blocked. tfy carries out each one and reports back. The order comes from the spec's prose and the repositories themselves, not from a field the plan had to fill in.
 
 Checked with the real CLI (`TestRealClaudeMergeRun`, sonnet at low effort, two Go modules and a squash merge). The merge run took three decisions: merge api; update app, where it ran `go get` on the merge commit through the checkout mirror, built, tested and committed; then merge app, once tfy had pushed the update and a review had approved it. The three decisions cost $0.20 of the unit's $0.70. Resuming the session between decisions works with `--json-schema`, as it does for revisions.
+
+## Sub-agents (2.1.284, 2026-09-29)
+
+Checked with sonnet at low effort, against a unit-style workspace with two checkouts and a local bare repo. The guard and deny rules came from generated settings, and a logging hook on PreToolUse, SubagentStart and SubagentStop recorded what hooks receive. `--tools` included `Agent`, in auto mode (`q10-subagents`), in `dontAsk` with only `Read` allowed (`q10-subagents-dontask`), and with no guard at all, so a sub-agent's push reached the bare repo (`q10-subagent-push`).
+
+| Question | Answer |
+|---|---|
+| What is the tool called? | `--tools Agent` works. The tool_use is named `Agent`, while `init.tools` lists it as `Task`. |
+| Which sub-agent types are available? | `init.agents`: `claude`, `Explore`, `general-purpose`, `Plan`, `statusline-setup`, plus the workspace's `.claude/agents`. **A checkout's `.claude/agents` did not load.** |
+| Are they synchronous? | **Mostly not.** Every `Agent` call in `q10-subagents` ran in the background (`is_backgrounded: true`), even without `run_in_background`. Its tool_result arrives at once ("Async agent launched successfully"). The sub-agent reports back through its own `SubagentHandback` tool, and the main agent is woken by a `task_notification`. Two calls in one message ran in parallel. In `q10-subagent-push` the one call ran in the foreground (`is_backgrounded: false`), and its tool_result came when the sub-agent was done. |
+| Does `--tools` bound them? | **Yes.** A sub-agent asked to use WebFetch had no such tool. Each gets `SubagentHandback` on top, and `Agent` itself, so they can nest (`spawn_depth`). |
+| Do the guard and deny rules apply? | **Yes.** The guard ran for every sub-agent Bash call and blocked `git -C repo-a push <bare>` with exit 2. In `dontAsk`, the sub-agent's `touch` and `git -C … log` were denied (`decision_reason_type: "mode"`) and `cat` ran. |
+| Are their denials visible to the monitor? | **Yes.** `permission_denied` events carry `agent_id`, and the denials are in the result's `permission_denials`. Hook events on the stream carry no agent. Hook **stdin** has `agent_id` and `agent_type` for sub-agent calls. |
+| Are pushes reported? | **Yes, a sub-agent's too.** `vcs_state_changed` (`kind: "push"`) came for `git -C repo push`, `cd repo && git push` and a push from inside the repo, and for a sub-agent's push. It carries no agent id; the monitor checks it against the shell commands that ran, the sub-agents' included. |
+| Are commits reported? | Only when git prints the commit: the CLI reads git's output, so `git commit -q` goes unreported. |
+| How does the session end? | **Several `result` events and repeated `system/init` events per run**, one per main-agent turn, the later ones after a `task_notification` woke it. The first five results were flushed together once the sub-agents finished. A sixth came after one more turn. `total_cost_usd` is cumulative; `num_turns`, `duration_ms`, `usage` and `permission_denials` are per turn. |
+
+Events that describe the sub-agents:
+- `task_started`: `task_id`, `tool_use_id` (the `Agent` call), `description`, `subagent_type`, `prompt`, `spawn_depth`.
+- `task_progress`: a live `description` of what the agent is doing, such as "Running ls repo-a | wc -l", plus `last_tool_name` and `usage` (`total_tokens`, `tool_uses`, `duration_ms`).
+- `task_updated`: `patch.status` and `end_time`.
+- `task_notification`: `status`, `summary`, `output_file`.
+- `background_tasks_changed`: the whole set of live tasks.
+
+A sub-agent's own assistant and user messages carry `parent_tool_use_id` (its `Agent` call), `subagent_type` and `task_description`. The `Agent` call's `tool_use_result` has `agentId` and `resolvedModel`. The result has no cost per sub-agent. `--no-session-persistence` still left a `subagents/agent-*.meta.json` file per sub-agent under `~/.claude/projects/`.
+
+What tfy does with this:
+- **Sub-agents are on by default, per unit.** Each profile with tools (define, plan, develop, merge, review, learn) adds `Agent` to `--tools` unless the unit turned sub-agents off. Every layer holds for them, which `TestMonitor` checks against the recordings.
+- **The runner waits for them.** The post-result grace runs only while the session is idle: it reported a result, no sub-agent is working, and it has not resumed since. The result the run keeps adds up the turns, and keeps the structured output if the last turn did not repeat it (`TestRunWaitsForResumedTurn`).
+- **The Agents view** comes from these events: `task_started` gives each sub-agent's name, type and prompt, its own messages give what it is doing now, `task_progress` its tool calls and tokens, and `SubagentHandback` its report.
+- **Not yet:** a checkout's own `.claude/agents`. Claude Code's documentation lets an agent's frontmatter set its own `permissionMode`, `hooks` and `mcpServers` (not checked here), so they need the same default-branch check as the repositories' hooks before tfy puts them in the workspace.

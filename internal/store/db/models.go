@@ -181,6 +181,7 @@ type Unit struct {
 	MergeRound      int64          `json:"merge_round"`
 	MergeAdmin      bool           `json:"merge_admin"`
 	RunOverrides    string         `json:"run_overrides"`
+	Subagents       bool           `json:"subagents"`
 }
 
 type UnitIssue struct {

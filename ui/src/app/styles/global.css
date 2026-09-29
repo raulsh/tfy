@@ -144,6 +144,93 @@ pre,
 	animation: tf-pulse 1.6s infinite;
 }
 
+/* The agent graph: each agent's sub-agents stack to its right, joined by
+   elbow connectors at --tf-tree-y, the middle of a node's first line. */
+.tf-tree {
+	--tf-tree-y: 21px;
+	--tf-tree-gap: 10px;
+	--tf-edge: color-mix(in srgb, var(--tf-text3) 55%, transparent);
+	display: flex;
+	align-items: flex-start;
+}
+
+.tf-tree-kids {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--tf-tree-gap);
+	padding-left: 36px;
+}
+
+.tf-tree-kids::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: var(--tf-tree-y);
+	width: 18px;
+	border-top: 1.5px solid var(--tf-edge);
+}
+
+.tf-tree-kid {
+	position: relative;
+}
+
+.tf-tree-kid::before,
+.tf-tree-kid::after {
+	content: "";
+	position: absolute;
+	left: -18px;
+	border-color: var(--tf-edge);
+	border-style: solid;
+	border-width: 0;
+}
+
+/* The trunk, bridging the gap to the next sibling. */
+.tf-tree-kid::before {
+	top: 0;
+	bottom: calc(-1 * var(--tf-tree-gap));
+	border-left-width: 1.5px;
+}
+
+.tf-tree-kid:first-child::before {
+	top: var(--tf-tree-y);
+}
+
+.tf-tree-kid:last-child::before {
+	bottom: auto;
+	height: var(--tf-tree-y);
+}
+
+.tf-tree-kid:only-child::before {
+	display: none;
+}
+
+.tf-tree-kid::after {
+	top: var(--tf-tree-y);
+	width: 18px;
+	border-top-width: 1.5px;
+}
+
+/* A sub-agent at work: its edge is live. */
+.tf-tree-kid.tf-live::after {
+	border-top-style: dashed;
+	border-color: var(--tf-accent);
+	animation: tf-edge 1s linear infinite;
+}
+
+@keyframes tf-edge {
+	to {
+		opacity: 0.45;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tf-tree-kid.tf-live::after,
+	.tf-pulse {
+		animation: none;
+	}
+}
+
 /* Markdown documents. */
 .tf-markdown {
 	font-size: 14px;

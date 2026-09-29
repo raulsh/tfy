@@ -68,6 +68,20 @@ export interface NewUnit {
 	// A GitHub issue the unit is for: a link, owner/repo#12, or #12.
 	issue?: string;
 	run_overrides?: RunOverrides;
+	// false keeps the unit's runs from starting sub-agents.
+	subagents?: boolean;
+}
+
+// Lets a unit's runs start sub-agents, or stops them from it.
+export function useSetSubagents(unitId: string) {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (on: boolean) => api.patch<Unit>(`/units/${unitId}`, { subagents: on }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["unit", unitId] });
+			qc.invalidateQueries({ queryKey: ["units"] });
+		},
+	});
 }
 
 export function useCreateUnit() {

@@ -91,6 +91,10 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 		spec.SessionID = sid.String()
 	}
 	profile.Apply(spec)
+	subagents := profile.Subagents && p.subagentsAllowed(ctx, req.Unit)
+	if subagents {
+		spec.Tools = append(spec.Tools, claude.AgentTool)
+	}
 	envOpts := claude.EnvOptions{GitConfigGlobal: p.Paths.GitConfig(), GHConfigDir: p.Paths.GHConfig()}
 	spec.GuardMarker = claude.GuardMarker
 	// A unit's runs load conventions the way Claude Code does in a
@@ -156,6 +160,11 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 			_ = p.Store.Q.StartRun(bg, db.StartRunParams{Pid: int64(pid), Now: store.NowNull(), ID: runID})
 			p.Hub.PublishJSON(topic, "status", runID, map[string]string{"status": "running"})
 			p.changed("run", runID)
+			p.board.start(AgentRun{
+				RunID: runID, Kind: req.Kind, UnitID: req.Unit.ID, UnitLabel: unitLabel(req.Unit), UnitTitle: req.Unit.Title,
+				ProjectID: projectID, StartedAt: time.Now(), Subagents: subagents,
+			}, spec.Cwd)
+			p.boardChanged()
 		},
 		OnEvent: func(e claude.Event) {
 			at := store.Now()
@@ -172,8 +181,13 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 			}
 			data, _ := json.Marshal(eventView{Seq: int64(e.Seq), At: at, Type: e.Type, Subtype: e.Subtype, Tool: tool, Summary: summary, Payload: e.Raw})
 			p.Hub.Publish(topic, events.Message{Kind: "event", ID: runID, Seq: int64(e.Seq), Data: data})
+			if p.board.observe(runID, e, at) {
+				p.boardChanged()
+			}
 		},
 	})
+	p.board.finish(runID)
+	p.boardChanged()
 
 	if rl := out.RateLimit; rl != nil {
 		p.quota.Store(&Quota{Status: rl.Status, Windows: rl.UnifiedWindows, UpdatedAt: time.Now()})

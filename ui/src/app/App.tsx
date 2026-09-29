@@ -10,6 +10,7 @@ const OverviewPage = lazy(() => import("@/features/overview/pages/OverviewPage")
 const UnitsPage = lazy(() => import("@/features/units/pages/UnitsPage"));
 const UnitPage = lazy(() => import("@/features/units/pages/UnitPage"));
 const RunsPage = lazy(() => import("@/features/runs/pages/RunsPage"));
+const AgentsPage = lazy(() => import("@/features/agents/pages/AgentsPage"));
 const InboxPage = lazy(() => import("@/features/inbox/pages/InboxPage"));
 const ProjectsPage = lazy(() => import("@/features/projects/pages/ProjectsPage"));
 const SettingsPage = lazy(() => import("@/features/settings/pages/SettingsPage"));
@@ -126,6 +127,14 @@ export function App() {
 					element={
 						<Page>
 							<InboxPage />
+						</Page>
+					}
+				/>
+				<Route
+					path="agents"
+					element={
+						<Page>
+							<AgentsPage />
 						</Page>
 					}
 				/>

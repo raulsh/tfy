@@ -1,7 +1,18 @@
 import { Select, Tooltip } from "antd";
-import { Activity, Boxes, ChevronsLeft, ChevronsRight, FolderGit2, Gauge, Inbox, Settings } from "lucide-react";
+import {
+	Activity,
+	Boxes,
+	ChevronsLeft,
+	ChevronsRight,
+	FolderGit2,
+	Gauge,
+	Inbox,
+	Network,
+	Settings,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { NavLink, Outlet, useSearchParams } from "react-router-dom";
+import { useAgents, workingAgents } from "@/features/agents/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { RunDrawer } from "@/features/runs/components/RunDrawer";
 import { useStats } from "@/shared/api/system";
@@ -9,10 +20,11 @@ import { StatusDot } from "@/shared/components/StatusTag";
 import { type LiveState, useLiveUpdates } from "@/shared/hooks/useLiveUpdates";
 import { useScope } from "./scope";
 
-const nav: { to: string; label: string; icon: ReactNode; badge?: "inbox" }[] = [
+const nav: { to: string; label: string; icon: ReactNode; badge?: "inbox" | "agents" }[] = [
 	{ to: "/overview", label: "Overview", icon: <Gauge size={17} strokeWidth={1.6} /> },
 	{ to: "/units", label: "Units", icon: <Boxes size={17} strokeWidth={1.6} /> },
 	{ to: "/inbox", label: "Inbox", icon: <Inbox size={17} strokeWidth={1.6} />, badge: "inbox" },
+	{ to: "/agents", label: "Agents", icon: <Network size={17} strokeWidth={1.6} />, badge: "agents" },
 	{ to: "/runs", label: "Runs", icon: <Activity size={17} strokeWidth={1.6} /> },
 	{ to: "/projects", label: "Projects", icon: <FolderGit2 size={17} strokeWidth={1.6} /> },
 	{ to: "/settings", label: "Settings", icon: <Settings size={17} strokeWidth={1.6} /> },
@@ -152,13 +164,19 @@ function NavItem({
 	label: string;
 	icon: ReactNode;
 	collapsed: boolean;
-	badge?: "inbox";
+	badge?: "inbox" | "agents";
 }) {
 	const { projectId } = useScope();
 	const { data: stats } = useStats(projectId);
-	// Messages a person should look at: triage was unsure, or they were
-	// imported without triage.
-	const count = badge ? (stats?.feedback_by_status?.uncertain ?? 0) + (stats?.feedback_by_status?.inbox ?? 0) : 0;
+	const { data: board } = useAgents();
+	// Messages a person should look at (triage was unsure, or they were
+	// imported without triage), or the agents at work.
+	const count =
+		badge === "inbox"
+			? (stats?.feedback_by_status?.uncertain ?? 0) + (stats?.feedback_by_status?.inbox ?? 0)
+			: badge === "agents"
+				? workingAgents(board)
+				: 0;
 	const link = (
 		<NavLink
 			to={to}
@@ -183,7 +201,7 @@ function NavItem({
 						fontVariantNumeric: "tabular-nums",
 					}}
 				>
-					{count}
+					{badge === "agents" && <StatusDot tone="accent" pulse size={6} />} {count}
 				</span>
 			)}
 		</NavLink>

@@ -118,7 +118,13 @@ func (s *Server) globalStream() fiber.Handler {
 					if !ok {
 						return nil
 					}
-					if err := stream.Event(sse.Event{Name: "change", Data: map[string]string{"kind": m.Kind, "id": m.ID}}); err != nil {
+					ev := sse.Event{Name: "change", Data: map[string]string{"kind": m.Kind, "id": m.ID}}
+					if m.Kind == "agents" {
+						// The agent board comes whole: it changes with every
+						// step an agent takes.
+						ev = sse.Event{Name: "agents", Data: m.Data}
+					}
+					if err := stream.Event(ev); err != nil {
 						return err
 					}
 				}

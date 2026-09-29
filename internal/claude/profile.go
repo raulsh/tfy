@@ -13,7 +13,14 @@ type Profile struct {
 	MaxDenials int
 	// Persist keeps the session on disk so a later run can --resume it.
 	Persist bool
+	// Subagents lets the run start sub-agents (the Agent tool) when its unit
+	// allows them. They share the run's session, tools, permissions and
+	// guard (docs/spike.md).
+	Subagents bool
 }
+
+// AgentTool starts sub-agents.
+const AgentTool = "Agent"
 
 // docsOnly lets a run write documents under ./docs and nothing else. Read-only
 // shell commands (ls, rg, cat, find) are allowed by dontAsk on their own.
@@ -35,6 +42,7 @@ var Profiles = map[string]Profile{
 		PermissionMode: ModeDontAsk,
 		MaxDenials:     20,
 		Persist:        true,
+		Subagents:      true,
 	},
 	"plan": {
 		Name:           "plan",
@@ -45,6 +53,7 @@ var Profiles = map[string]Profile{
 		ForbidPush:     true,
 		MaxDenials:     40,
 		Persist:        true,
+		Subagents:      true,
 	},
 	"develop": {
 		Name:           "develop",
@@ -54,6 +63,7 @@ var Profiles = map[string]Profile{
 		ForbidPush:     true,
 		MaxDenials:     40,
 		Persist:        true,
+		Subagents:      true,
 	},
 	// merge decides how a unit's approved pull requests merge, one step at
 	// a time, and may update them between merges. tfy carries out each
@@ -66,6 +76,7 @@ var Profiles = map[string]Profile{
 		ForbidPush:     true,
 		MaxDenials:     40,
 		Persist:        true,
+		Subagents:      true,
 	},
 	"review": {
 		Name:           "review",
@@ -75,6 +86,7 @@ var Profiles = map[string]Profile{
 		Guarded:        true,
 		ForbidPush:     true,
 		MaxDenials:     40,
+		Subagents:      true,
 	},
 	// learn looks back at a finished unit and may propose changes to the
 	// repositories' conventions. Like review, it only reads.
@@ -86,6 +98,7 @@ var Profiles = map[string]Profile{
 		Guarded:        true,
 		ForbidPush:     true,
 		MaxDenials:     40,
+		Subagents:      true,
 	},
 	// issue weighs a linked GitHub issue against what tfy gathered; it only
 	// needs the text it is given.

@@ -75,6 +75,7 @@ type Pipeline struct {
 	Deps
 	repoLocks sync.Map // full name → *sync.Mutex
 	quota     atomic.Pointer[Quota]
+	board     agentBoard
 }
 
 // Quota is the latest account utilization the CLI reported.

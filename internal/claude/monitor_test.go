@@ -34,6 +34,14 @@ func TestMonitor(t *testing.T) {
 		{"unguarded profile ignores hooks", "q9-missinghook", Spec{}, ""},
 		{"denials under the limit", "q2-edit", Spec{MaxDenials: 1}, ""},
 		{"denials over the limit", "q5-ro", Spec{MaxDenials: 1}, "permission denials"},
+		// Sub-agents run in the same session, and every layer holds for
+		// them: the guard answers their shell commands (and blocked one
+		// sub-agent's push), their pushes are reported, and their denials
+		// count.
+		{"sub-agents behind the guard", "q10-subagents", Spec{RequireGuard: true, GuardMarker: GuardMarker, ForbidPush: true, PermissionMode: ModeAuto}, ""},
+		{"sub-agent ran without any guard", "q10-subagent-push", Spec{RequireGuard: true}, "without the guard"},
+		{"sub-agent pushed", "q10-subagent-push", Spec{ForbidPush: true}, "pushed"},
+		{"sub-agent denials count", "q10-subagents-dontask", Spec{MaxDenials: 1, PermissionMode: ModeDontAsk}, "permission denials"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -121,6 +129,35 @@ func TestGuardMarkerSeparatesRepositoryHooks(t *testing.T) {
 	m = newMonitor(&spec)
 	if why := m.observe(hook(GuardMarker+"\n", 1)); !strings.Contains(why, "exit 1") {
 		t.Fatalf("a guard that fails must abort the run, got %q", why)
+	}
+}
+
+// A run is idle once it reported a result with no sub-agent still working,
+// until it resumes for another turn.
+func TestMonitorIdle(t *testing.T) {
+	ev := func(line string) Event { return ParseLine(1, []byte(line)) }
+	started := ev(`{"type":"system","subtype":"task_started","task_id":"a1","task_type":"local_agent","description":"Look around"}`)
+	bash := ev(`{"type":"system","subtype":"task_started","task_id":"b1","task_type":"local_bash","description":"Serve"}`)
+	result := ev(`{"type":"result","subtype":"success","num_turns":1,"total_cost_usd":0.1}`)
+	done := ev(`{"type":"system","subtype":"task_notification","task_id":"a1","status":"completed"}`)
+	resumed := ev(`{"type":"system","subtype":"init","session_id":"s","permissionMode":"auto"}`)
+
+	m := newMonitor(&Spec{})
+	steps := []struct {
+		ev   Event
+		idle bool
+	}{
+		{started, false}, {bash, false}, {result, false}, // a sub-agent works on
+		{done, true}, {resumed, false}, {result, true}, // a background command does not count
+	}
+	for i, s := range steps {
+		m.observe(s.ev)
+		if m.idle() != s.idle {
+			t.Fatalf("step %d (%s/%s): idle = %v", i, s.ev.Type, s.ev.Subtype, m.idle())
+		}
+	}
+	if m.result.NumTurns != 2 {
+		t.Errorf("turns = %d, want both results'", m.result.NumTurns)
 	}
 }
 

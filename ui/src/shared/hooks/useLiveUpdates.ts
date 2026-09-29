@@ -53,6 +53,11 @@ export function useLiveUpdates(): LiveState {
 			pending.add(`${kind}:${id}`);
 			if (timer === undefined) timer = window.setTimeout(flush, 200);
 		});
+		// The agent board comes whole, many times a minute: it replaces what
+		// the query holds instead of refetching it.
+		es.addEventListener("agents", (e) => {
+			qc.setQueryData(["agents"], JSON.parse((e as MessageEvent).data));
+		});
 		es.onerror = () => setState(es.readyState === EventSource.CLOSED ? "offline" : "connecting");
 		es.onopen = () => {
 			setState("live");

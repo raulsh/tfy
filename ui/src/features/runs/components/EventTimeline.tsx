@@ -7,6 +7,7 @@ import {
 	GitCommitHorizontal,
 	Play,
 	ShieldAlert,
+	Split,
 	Terminal,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +28,10 @@ interface Row {
 	color: string;
 	error?: boolean;
 	payload: unknown;
+	// A sub-agent's rows hang under the Agent call that started it.
+	parent?: string; // that call's tool use id
+	depth?: number; // 0, the main agent's, when unset
+	text?: boolean; // a message, shown as prose when opened
 }
 
 interface ContentBlock {
@@ -63,12 +68,55 @@ function resultText(b: ContentBlock): string {
 function buildRows(events: RunEvent[]): Row[] {
 	const rows: Row[] = [];
 	const byToolUse = new Map<string, Row>();
+	// Sub-agents: the Agent call's row by task, and each call's depth.
+	const byTask = new Map<string, Row>();
+	const depthOf = new Map<string, number>();
+	let lastResult: Row | undefined;
+	let started = false;
 	for (const ev of events) {
 		const at = new Date(ev.at).getTime();
 		const p = ev.payload as Record<string, unknown>;
+		const parent = typeof p.parent_tool_use_id === "string" ? p.parent_tool_use_id : undefined;
+		const depth = parent ? (depthOf.get(parent) ?? 0) + 1 : 0;
+		const agent = parent ? byToolUse.get(parent) : undefined;
 		switch (ev.type) {
 			case "system":
-				if (ev.subtype === "init") {
+				if (ev.subtype === "init" && started) {
+					// The session announces itself again at every turn; after a
+					// result, a sub-agent reported back and woke it.
+					if (lastResult) {
+						lastResult.label = "Turn ended";
+						lastResult.color = "var(--tf-text3)";
+						lastResult = undefined;
+						rows.push({
+							key: `${ev.seq}`,
+							start: at,
+							icon: <Play size={13} />,
+							label: "Resumed",
+							detail: "a sub-agent reported back",
+							color: statusColors.info,
+							payload: p,
+						});
+					}
+				} else if (ev.subtype === "task_started" && p.task_type === "local_agent") {
+					const row = byToolUse.get(String(p.tool_use_id ?? ""));
+					if (row) {
+						byTask.set(String(p.task_id), row);
+						row.end = undefined; // until the sub-agent ends, not its launch
+						row.payload = { ...(row.payload as object), task: p };
+					}
+				} else if (
+					(ev.subtype === "task_updated" || ev.subtype === "task_notification") &&
+					byTask.has(String(p.task_id))
+				) {
+					const row = byTask.get(String(p.task_id)) as Row;
+					const s = String((p.patch as { status?: string } | undefined)?.status ?? p.status ?? "");
+					if (s && s !== "running" && s !== "pending") {
+						row.end ??= at;
+						if (s === "failed" || s === "killed") row.error = true;
+					}
+				} else if (ev.subtype === "init") {
+					started = true;
 					rows.push({
 						key: `${ev.seq}`,
 						start: at,
@@ -121,24 +169,48 @@ function buildRows(events: RunEvent[]): Row[] {
 							key: `${ev.seq}.${i}`,
 							start: at,
 							icon: <Bot size={13} />,
-							label: "Claude",
+							label: agent ? agentName(agent) : "Claude",
 							detail: b.text.trim(),
 							color: "var(--tf-text3)",
 							payload: b,
+							text: true,
+							parent,
+							depth,
+						});
+					} else if (b.type === "tool_use" && b.name === "SubagentHandback") {
+						rows.push({
+							key: `${ev.seq}.${i}`,
+							start: at,
+							icon: <Bot size={13} />,
+							label: "Reported back",
+							detail: String(b.input?.message ?? ""),
+							color: toolColors.Agent,
+							payload: { tool_use: b },
+							text: true,
+							parent,
+							depth,
 						});
 					} else if (b.type === "tool_use") {
+						const isAgent = b.name === "Agent";
 						const row: Row = {
 							key: `${ev.seq}.${i}`,
 							start: at,
 							end: undefined,
-							icon: <Terminal size={13} />,
-							label: b.name ?? "tool",
-							detail: inputSummary(b.input),
+							icon: isAgent ? <Split size={13} /> : <Terminal size={13} />,
+							label: isAgent ? "Sub-agent" : (b.name ?? "tool"),
+							detail: isAgent
+								? `${b.input?.description ?? ""}${b.input?.subagent_type ? ` · ${b.input.subagent_type}` : ""}`
+								: inputSummary(b.input),
 							color: toolColors[b.name ?? ""] ?? "#B9C3D0",
 							payload: { tool_use: b },
+							parent,
+							depth,
 						};
 						rows.push(row);
-						if (b.id) byToolUse.set(b.id, row);
+						if (b.id) {
+							byToolUse.set(b.id, row);
+							depthOf.set(b.id, depth);
+						}
 					}
 				}
 				break;
@@ -147,13 +219,15 @@ function buildRows(events: RunEvent[]): Row[] {
 					if (b.type !== "tool_result" || !b.tool_use_id) continue;
 					const row = byToolUse.get(b.tool_use_id);
 					if (!row) continue;
-					row.end = at;
+					// A sub-agent launched in the background answers at once;
+					// its row ends when the sub-agent does.
+					if ((row.payload as { task?: unknown }).task === undefined) row.end = at;
 					row.error = b.is_error;
 					row.payload = { ...(row.payload as object), result: resultText(b).slice(0, 20000) };
 				}
 				break;
 			case "result":
-				rows.push({
+				lastResult = {
 					key: `${ev.seq}`,
 					start: at,
 					icon: p.is_error ? <CircleAlert size={13} /> : <Flag size={13} />,
@@ -162,7 +236,8 @@ function buildRows(events: RunEvent[]): Row[] {
 					color: p.is_error ? statusColors.error : statusColors.ok,
 					error: Boolean(p.is_error),
 					payload: p,
-				});
+				};
+				rows.push(lastResult);
 				break;
 			case "log":
 				rows.push({
@@ -177,7 +252,36 @@ function buildRows(events: RunEvent[]): Row[] {
 				break;
 		}
 	}
-	return rows;
+	return nest(rows);
+}
+
+// agentName is how a sub-agent's own rows are labelled.
+function agentName(call: Row): string {
+	const name = call.detail.split(" · ")[0] || "Sub-agent";
+	return name.length > 28 ? `${name.slice(0, 27)}…` : name;
+}
+
+// nest orders the rows as a tree: each sub-agent's rows, in time order,
+// right under the Agent call that started it.
+function nest(rows: Row[]): Row[] {
+	const callOf = (r: Row) => (r.payload as { tool_use?: ContentBlock }).tool_use?.id;
+	const calls = new Set(rows.map(callOf).filter(Boolean));
+	const kids = new Map<string, Row[]>();
+	const top: Row[] = [];
+	for (const r of rows) {
+		if (r.parent && calls.has(r.parent)) kids.set(r.parent, [...(kids.get(r.parent) ?? []), r]);
+		else top.push(r);
+	}
+	const out: Row[] = [];
+	const walk = (list: Row[]) => {
+		for (const r of list) {
+			out.push(r);
+			const id = callOf(r);
+			if (id && kids.has(id)) walk(kids.get(id) as Row[]);
+		}
+	};
+	walk(top);
+	return out;
 }
 
 // The run as a trace: time offset, what happened, and a waterfall bar.
@@ -245,7 +349,18 @@ export function EventTimeline({ events, live }: { events: RunEvent[]; live: bool
 							<span className="mono faint" style={{ fontSize: 11.5, textAlign: "right" }}>
 								+{duration(r.start - t0)}
 							</span>
-							<span style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+							<span
+								style={{
+									display: "flex",
+									gap: 8,
+									alignItems: "center",
+									minWidth: 0,
+									paddingLeft: Math.max((r.depth ?? 0) - 1, 0) * 16,
+								}}
+							>
+								{(r.depth ?? 0) > 0 && (
+									<span style={{ width: 2, height: 16, flex: "none", borderRadius: 1, background: toolColors.Agent }} />
+								)}
 								<span style={{ color: r.color, display: "inline-flex", flex: "none" }}>{r.icon}</span>
 								<span style={{ fontWeight: 500, flex: "none" }}>{r.label}</span>
 								<span
@@ -293,7 +408,7 @@ export function EventTimeline({ events, live }: { events: RunEvent[]; live: bool
 						</div>
 						{isOpen && (
 							<div style={{ padding: "0 12px 10px 100px" }}>
-								{r.label === "Claude" ? (
+								{r.text ? (
 									<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{r.detail}</div>
 								) : (
 									<JsonView value={r.payload} />

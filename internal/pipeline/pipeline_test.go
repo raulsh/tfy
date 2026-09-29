@@ -99,18 +99,29 @@ func fakeClaude() int {
 		say := func(text string) {
 			emit(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": text}}}})
 		}
-		use := func(id, name string, input map[string]any, result string, guarded bool) {
-			emit(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "tool_use", "id": id, "name": name, "input": input}}}})
+		// in is the Agent call of the sub-agent acting, "" for the main agent.
+		useIn := func(in, id, name string, input map[string]any, result string, guarded bool) {
+			var parent any
+			if in != "" {
+				parent = in
+			}
+			emit(map[string]any{"type": "assistant", "parent_tool_use_id": parent, "message": map[string]any{"role": "assistant", "model": "fake", "content": []any{map[string]any{"type": "tool_use", "id": id, "name": name, "input": input}}}})
 			time.Sleep(step / 2)
 			if guarded {
 				emit(map[string]any{"type": "system", "subtype": "hook_started", "hook_id": id, "hook_name": "PreToolUse:" + name, "hook_event": "PreToolUse"})
 				emit(map[string]any{"type": "system", "subtype": "hook_response", "hook_id": id, "hook_name": "PreToolUse:" + name, "hook_event": "PreToolUse", "exit_code": 0, "outcome": "success", "stdout": claude.GuardMarker + "\n"})
 			}
-			emit(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": result}}}})
+			emit(map[string]any{"type": "user", "parent_tool_use_id": parent, "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "content": result}}}})
+		}
+		use := func(id, name string, input map[string]any, result string, guarded bool) {
+			useIn("", id, name, input, result, guarded)
 		}
 		say("Let me read what I have to work with.")
 		time.Sleep(step)
 		use("t1", "Read", map[string]any{"file_path": cwd + "/docs"}, "requirement.md\nspec.md", false)
+		if tools := flagValue(args, "--tools"); strings.Contains(tools, claude.AgentTool) {
+			fakeSubagents(emit, useIn, say, step, cwd, strings.Contains(tools, "Bash"))
+		}
 		if strings.Contains(flagValue(args, "--tools"), "Bash") {
 			time.Sleep(step)
 			use("t2", "Bash", map[string]any{"command": "ls && git -C app log --oneline -3", "description": "Look around"}, "app\ndocs\n3f2a1b0 init", true)
@@ -232,6 +243,48 @@ func fakeClaude() int {
 		"session_id": sid, "result": resultText, "structured_output": out, "permission_denials": []any{},
 		"usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
 	return 0
+}
+
+// fakeSubagents acts out two sub-agents working in parallel, the way the
+// CLI reports them (internal/claude/testdata/q10-subagents.jsonl): started
+// in the background, each step shown as it happens, then a report back.
+func fakeSubagents(emit func(any), useIn func(in, id, name string, input map[string]any, result string, guarded bool), say func(string), step time.Duration, cwd string, bash bool) {
+	type sub struct{ call, task, name, kind, report string }
+	subs := []sub{
+		{"a1", "task-a1", "Map the health checks", "Explore", "The health check lives in app/health.txt and always says ok."},
+		{"a2", "task-a2", "Check how the tests run", "general-purpose", "The app has no tests yet; make test is a no-op."},
+	}
+	system := func(subtype string, fields map[string]any) {
+		fields["type"], fields["subtype"] = "system", subtype
+		emit(fields)
+	}
+	for _, s := range subs {
+		emit(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "model": "fake", "content": []any{map[string]any{
+			"type": "tool_use", "id": s.call, "name": claude.AgentTool, "input": map[string]any{"description": s.name, "subagent_type": s.kind, "prompt": s.name + ", and report what you find."}}}}})
+		system("task_started", map[string]any{"task_id": s.task, "tool_use_id": s.call, "description": s.name, "subagent_type": s.kind,
+			"is_backgrounded": true, "spawn_depth": 1, "task_type": claude.TaskTypeAgent, "prompt": s.name + ", and report what you find."})
+		emit(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": s.call,
+			"content": "Async agent launched successfully."}}}, "tool_use_result": map[string]any{"isAsync": true, "status": "async_launched", "agentId": s.task, "resolvedModel": "fake"}})
+	}
+	say("Both sub-agents are on it; I'll wait for their reports.")
+	for i := range 2 {
+		for _, s := range subs {
+			id := fmt.Sprintf("%s-%d", s.call, i)
+			if bash {
+				useIn(s.call, id, "Bash", map[string]any{"command": fmt.Sprintf("git -C app log --oneline -%d", 3+i), "description": "Look at the history"}, "3f2a1b0 init", true)
+			} else {
+				useIn(s.call, id, "Read", map[string]any{"file_path": cwd + "/docs/requirement.md"}, "# Requirement", false)
+			}
+			system("task_progress", map[string]any{"task_id": s.task, "tool_use_id": s.call, "description": "Looking at the history", "subagent_type": s.kind,
+				"usage": map[string]any{"total_tokens": 4200 + 900*i, "tool_uses": i + 1, "duration_ms": 1500 * (i + 1)}, "last_tool_name": "Bash"})
+		}
+	}
+	for _, s := range subs {
+		time.Sleep(step / 2)
+		useIn(s.call, s.call+"-back", "SubagentHandback", map[string]any{"message": s.report}, `{"success":true}`, false)
+		system("task_updated", map[string]any{"task_id": s.task, "patch": map[string]any{"status": "completed", "end_time": time.Now().UnixMilli()}})
+		system("task_notification", map[string]any{"task_id": s.task, "tool_use_id": s.call, "status": "completed", "summary": s.report})
+	}
 }
 
 var openPRLine = regexp.MustCompile(`(?m)^- ([\w.-]+)/ is \S+#\d+, branch`)
@@ -1495,5 +1548,61 @@ func TestRunOverridesChooseAUnitsModels(t *testing.T) {
 		if err != nil || r.Model != want[0] || r.Effort != want[1] {
 			t.Errorf("%s run recorded %s at %s (%v), want %v", kind, r.Model, r.Effort, err, want)
 		}
+	}
+}
+
+// A unit's runs may start sub-agents unless it turned them off, and the
+// switch holds from the next run on.
+func TestSubagentsFollowTheUnit(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	pr := h.project()
+	tools := func(kind string) []string {
+		t.Helper()
+		var args []string
+		if err := json.Unmarshal([]byte(h.read(filepath.Join(h.control, "args-"+kind+".json"))), &args); err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(flagValue(args, "--tools"), ",")
+	}
+
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !u.Subagents {
+		t.Fatal("sub-agents must be on by default")
+	}
+	u = h.waitState(u.ID, domain.StateDefinitionReview)
+	if got := tools("define"); !slices.Contains(got, claude.AgentTool) {
+		t.Errorf("define ran with tools %v, want the Agent tool", got)
+	}
+
+	if u, err = h.p.SetSubagents(ctx, u.ID, false, "dev"); err != nil || u.Subagents {
+		t.Fatalf("turning sub-agents off: %v (%v)", err, u.Subagents)
+	}
+	if _, err := h.p.Act(ctx, u.ID, ActionMarkReady, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(u.ID, domain.StateSpecReview)
+	if got := tools("plan"); slices.Contains(got, claude.AgentTool) || !slices.Contains(got, "Bash") {
+		t.Errorf("plan ran with tools %v, want its own without the Agent tool", got)
+	}
+	acts, _ := h.st.Q.ListUnitActivity(ctx, db.ListUnitActivityParams{UnitID: store.NullString(u.ID), Lim: 100})
+	if !slices.ContainsFunc(acts, func(a db.Activity) bool { return strings.Contains(a.Message, "sub-agents turned off") }) {
+		t.Error("turning sub-agents off is not in the unit's activity")
+	}
+	if n := len(h.p.Agents().Runs); n != 0 {
+		t.Errorf("finished runs stay on the agent board: %d", n)
+	}
+
+	off := false
+	u2, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Logs are noisy", Subagents: &off})
+	if err != nil || u2.Subagents {
+		t.Fatalf("a unit created without sub-agents: %v (%v)", err, u2.Subagents)
+	}
+	h.waitState(u2.ID, domain.StateDefinitionReview)
+	if got := tools("define"); slices.Contains(got, claude.AgentTool) {
+		t.Errorf("define ran with tools %v, want no Agent tool", got)
 	}
 }

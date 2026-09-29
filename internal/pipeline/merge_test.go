@@ -122,7 +122,7 @@ func TestMergeRunOrdersAndUpdates(t *testing.T) {
 	}
 	var args []string
 	_ = json.Unmarshal([]byte(h.read(filepath.Join(h.control, "args-merge.json"))), &args)
-	if flagValue(args, "--tools") != "Bash,Read,Write,Edit" || flagValue(args, "--permission-mode") != "auto" {
+	if flagValue(args, "--tools") != "Bash,Read,Write,Edit,Agent" || flagValue(args, "--permission-mode") != "auto" {
 		t.Errorf("merge run args: %v", args)
 	}
 

@@ -59,6 +59,8 @@ export interface Unit {
 	workspace_path: string;
 	created_by: string;
 	run_overrides: RunOverrides;
+	// Whether the unit's runs may start sub-agents.
+	subagents: boolean;
 	created_at: string;
 	updated_at: string;
 	busy: boolean;
@@ -444,4 +446,46 @@ export interface MergeDecision {
 	repos: string[];
 	wait_for: "" | "released" | "tagged";
 	reason: string;
+}
+
+// The agent board: every run going now, its main agent and the sub-agents it
+// started. It arrives whole on the live stream as it changes.
+export interface AgentBoard {
+	max_runs: number;
+	runs: AgentRun[];
+}
+
+export interface AgentRun {
+	run_id: string;
+	kind: string;
+	unit_id?: string;
+	unit_label?: string;
+	unit_title?: string;
+	project_id?: string;
+	started_at: string;
+	// Whether the run may start sub-agents at all.
+	subagents: boolean;
+	main: Agent;
+	agents: Agent[];
+}
+
+// working, waiting (on its sub-agents) and done are tfy's; a sub-agent that
+// ended carries how: completed, failed, killed or stopped.
+export type AgentStatus = "working" | "waiting" | "done" | "completed" | "failed" | "killed" | "stopped";
+
+export interface Agent {
+	id: string; // "main" for the run's own agent
+	parent_id?: string;
+	name: string;
+	type?: string;
+	model?: string;
+	prompt?: string;
+	status: AgentStatus;
+	activity?: string;
+	active_at: string;
+	tool_uses: number;
+	tokens?: number;
+	report?: string;
+	started_at: string;
+	ended_at?: string;
 }

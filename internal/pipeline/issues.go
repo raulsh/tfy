@@ -299,6 +299,7 @@ func (p *Pipeline) createUnitFromIssue(ctx context.Context, in CreateUnitInput) 
 	u, err := p.newUnit(ctx, unitSpec{
 		ProjectID: in.ProjectID, Kind: kind, Title: title, Description: in.Description,
 		Origin: domain.OriginGitHubIssue, State: domain.StateDefining, CreatedBy: in.CreatedBy, RunOverrides: in.RunOverrides,
+		NoSubagents: off(in.Subagents),
 	})
 	if err != nil {
 		return u, err

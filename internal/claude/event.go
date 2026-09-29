@@ -8,6 +8,7 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -29,7 +30,17 @@ const (
 	SubHookResponse     = "hook_response"
 	SubPermissionDenied = "permission_denied"
 	SubVCSStateChanged  = "vcs_state_changed"
+	// Tasks are the session's background work: shell commands started with
+	// run_in_background and sub-agents started with the Agent tool.
+	SubTaskStarted      = "task_started"
+	SubTaskProgress     = "task_progress"
+	SubTaskUpdated      = "task_updated"
+	SubTaskNotification = "task_notification"
 )
+
+// TaskTypeAgent is the task type of a sub-agent; background shell commands
+// are local_bash.
+const TaskTypeAgent = "local_agent"
 
 // Event is one line of stream-json output. Raw always holds the full line, so
 // unknown event types survive untouched.
@@ -101,6 +112,26 @@ type Result struct {
 	StopReason        string          `json:"stop_reason"`
 }
 
+// mergeEarlier folds in the result of an earlier turn of the same run. A
+// session with sub-agents reports a result each time its turn ends, and
+// carries on when they report back. The cost is cumulative already; turns,
+// duration, tokens and denials are per turn. The structured output stays if
+// the last turn did not repeat it.
+func (r *Result) mergeEarlier(prev *Result) {
+	r.NumTurns += prev.NumTurns
+	r.DurationMS += prev.DurationMS
+	r.Usage.InputTokens += prev.Usage.InputTokens
+	r.Usage.OutputTokens += prev.Usage.OutputTokens
+	r.Usage.CacheCreationInputTokens += prev.Usage.CacheCreationInputTokens
+	r.Usage.CacheReadInputTokens += prev.Usage.CacheReadInputTokens
+	r.PermissionDenials = append(slices.Clone(prev.PermissionDenials), r.PermissionDenials...)
+	if _, ok := r.Structured(); !ok {
+		if raw, ok := prev.Structured(); ok {
+			r.StructuredOutput = raw
+		}
+	}
+}
+
 // Structured returns the schema-validated output, falling back to parsing the
 // result text, which carries the same JSON.
 func (r *Result) Structured() (json.RawMessage, bool) {
@@ -167,6 +198,57 @@ type VCSStateChanged struct {
 	Cwd    string `json:"cwd"`
 }
 
+// Task is system/task_started, task_progress, task_updated and
+// task_notification. Each carries some of the fields: task_updated only its
+// Patch.
+type Task struct {
+	TaskID       string     `json:"task_id"`
+	ToolUseID    string     `json:"tool_use_id"` // the call that started it
+	TaskType     string     `json:"task_type"`   // on task_started
+	Description  string     `json:"description"` // on progress, what it is doing now
+	SubagentType string     `json:"subagent_type"`
+	Prompt       string     `json:"prompt"`
+	SpawnDepth   int        `json:"spawn_depth"` // 1 for the main agent's sub-agents
+	Status       string     `json:"status"`
+	Summary      string     `json:"summary"`
+	LastToolName string     `json:"last_tool_name"`
+	Usage        *TaskUsage `json:"usage"`
+	Patch        *TaskPatch `json:"patch"`
+}
+
+// TaskUsage is a task's running totals.
+type TaskUsage struct {
+	TotalTokens int64 `json:"total_tokens"`
+	ToolUses    int   `json:"tool_uses"`
+	DurationMS  int64 `json:"duration_ms"`
+}
+
+// TaskPatch is the change a task_updated event reports.
+type TaskPatch struct {
+	Status  string `json:"status"`
+	EndTime int64  `json:"end_time"` // Unix milliseconds
+}
+
+// Ended returns the status a task ended with (completed, failed, killed,
+// stopped), or "" while it runs.
+func (t *Task) Ended() string {
+	s := t.Status
+	if t.Patch != nil && t.Patch.Status != "" {
+		s = t.Patch.Status
+	}
+	switch s {
+	case "", "running", "pending":
+		return ""
+	}
+	return s
+}
+
+// SubagentLaunch is what an Agent call's result says about the sub-agent.
+type SubagentLaunch struct {
+	AgentID string `json:"agentId"` // the task id
+	Model   string `json:"resolvedModel"`
+}
+
 // ContentBlock is one block of an assistant or user message.
 type ContentBlock struct {
 	Type      string          `json:"type"`
@@ -206,18 +288,20 @@ func (b *ContentBlock) ResultText() string {
 // Message is the payload of assistant and user events.
 type Message struct {
 	Role    string         `json:"role"`
+	Model   string         `json:"model"` // on assistant messages
 	Content []ContentBlock `json:"-"`
 }
 
 func (m *Message) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Role    string          `json:"role"`
+		Model   string          `json:"model"`
 		Content json.RawMessage `json:"content"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	m.Role = raw.Role
+	m.Role, m.Model = raw.Role, raw.Model
 	m.Content = nil
 	if len(raw.Content) == 0 {
 		return nil
@@ -282,6 +366,52 @@ func (e Event) VCSStateChanged() (*VCSStateChanged, bool) {
 		return nil, false
 	}
 	return decode[VCSStateChanged](e.Raw)
+}
+
+// Task decodes the system task events.
+func (e Event) Task() (*Task, bool) {
+	if e.Type != TypeSystem {
+		return nil, false
+	}
+	switch e.Subtype {
+	case SubTaskStarted, SubTaskProgress, SubTaskUpdated, SubTaskNotification:
+		return decode[Task](e.Raw)
+	}
+	return nil, false
+}
+
+// ParentToolUseID returns the Agent call a sub-agent's assistant or user
+// event belongs to, or "" for the main agent's.
+func (e Event) ParentToolUseID() string {
+	if e.Type != TypeAssistant && e.Type != TypeUser {
+		return ""
+	}
+	w, _ := decode[struct {
+		Parent string `json:"parent_tool_use_id"`
+	}](e.Raw)
+	if w == nil {
+		return ""
+	}
+	return w.Parent
+}
+
+// SubagentLaunch decodes the result of an Agent call, from the user event
+// that carries it.
+func (e Event) SubagentLaunch() (*SubagentLaunch, bool) {
+	if e.Type != TypeUser {
+		return nil, false
+	}
+	w, ok := decode[struct {
+		Result json.RawMessage `json:"tool_use_result"`
+	}](e.Raw)
+	if !ok || !strings.HasPrefix(string(w.Result), "{") {
+		return nil, false
+	}
+	l, ok := decode[SubagentLaunch](w.Result)
+	if !ok || l.AgentID == "" {
+		return nil, false
+	}
+	return l, true
 }
 
 // Message decodes the message of an assistant or user event.
@@ -362,6 +492,17 @@ func (e Event) Summary() string {
 			if v, ok := e.VCSStateChanged(); ok {
 				return "git " + v.Kind + " in " + v.Cwd
 			}
+		case SubTaskStarted:
+			if t, ok := e.Task(); ok {
+				if t.TaskType == TaskTypeAgent {
+					return fmt.Sprintf("sub-agent started: %s (%s)", clip(oneLine(t.Description), 160), t.SubagentType)
+				}
+				return "background task started: " + clip(oneLine(t.Description), 160)
+			}
+		case SubTaskNotification:
+			if t, ok := e.Task(); ok {
+				return "background task " + t.Status
+			}
 		}
 		return ""
 	case TypeLog:
@@ -389,6 +530,18 @@ func (e Event) ToolName() string {
 		}
 	}
 	return ""
+}
+
+// Activity describes a tool call for people watching a run: the tool and
+// what it works on, in the words Claude gave the call when it gave some.
+func (b *ContentBlock) Activity() string {
+	var in struct {
+		Description string `json:"description"`
+	}
+	if json.Unmarshal(b.Input, &in) == nil && strings.TrimSpace(in.Description) != "" {
+		return b.Name + ": " + clip(oneLine(in.Description), 160)
+	}
+	return b.Name + ": " + toolInputSummary(b.Name, b.Input)
 }
 
 func toolInputSummary(tool string, input json.RawMessage) string {

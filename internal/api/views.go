@@ -32,6 +32,7 @@ type UnitView struct {
 	WorkspacePath   string              `json:"workspace_path"`
 	CreatedBy       string              `json:"created_by"`
 	RunOverrides    domain.RunOverrides `json:"run_overrides"`
+	Subagents       bool                `json:"subagents"`
 	CreatedAt       time.Time           `json:"created_at"`
 	UpdatedAt       time.Time           `json:"updated_at"`
 	Busy            bool                `json:"busy"`
@@ -44,7 +45,7 @@ func unitView(u db.Unit, busy bool, actions []string, projectName string) UnitVi
 		ParentUnitID: u.ParentUnitID.String, Kind: u.Kind, Title: u.Title, Summary: u.Summary, Description: u.Description, Origin: u.Origin,
 		State: u.State, Stage: string(domain.State(u.State).Stage()), Attention: u.Attention,
 		AttentionDetail: u.AttentionDetail, ReviewIteration: u.ReviewIteration, MergeRound: u.MergeRound, WorkspacePath: u.WorkspacePath,
-		CreatedBy: u.CreatedBy, RunOverrides: domain.ParseRunOverrides(u.RunOverrides), CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Busy: busy, Actions: actions,
+		CreatedBy: u.CreatedBy, RunOverrides: domain.ParseRunOverrides(u.RunOverrides), Subagents: u.Subagents, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Busy: busy, Actions: actions,
 	}
 }
 

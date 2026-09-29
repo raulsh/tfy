@@ -14,10 +14,10 @@ import (
 
 const createUnit = `-- name: CreateUnit :one
 INSERT INTO units (id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state,
-                   workspace_path, created_by, run_overrides, created_at, updated_at)
+                   workspace_path, created_by, run_overrides, subagents, created_at, updated_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-        ?11, ?12, ?13, ?14, ?14)
-RETURNING id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides
+        ?11, ?12, ?13, ?14, ?15, ?15)
+RETURNING id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides, subagents
 `
 
 type CreateUnitParams struct {
@@ -34,6 +34,7 @@ type CreateUnitParams struct {
 	WorkspacePath string         `json:"workspace_path"`
 	CreatedBy     string         `json:"created_by"`
 	RunOverrides  string         `json:"run_overrides"`
+	Subagents     bool           `json:"subagents"`
 	Now           time.Time      `json:"now"`
 }
 
@@ -52,6 +53,7 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Unit, e
 		arg.WorkspacePath,
 		arg.CreatedBy,
 		arg.RunOverrides,
+		arg.Subagents,
 		arg.Now,
 	)
 	var i Unit
@@ -76,12 +78,13 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Unit, e
 		&i.MergeRound,
 		&i.MergeAdmin,
 		&i.RunOverrides,
+		&i.Subagents,
 	)
 	return i, err
 }
 
 const getUnit = `-- name: GetUnit :one
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units WHERE id = ?1
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides, subagents FROM units WHERE id = ?1
 `
 
 func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
@@ -108,12 +111,13 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
 		&i.MergeRound,
 		&i.MergeAdmin,
 		&i.RunOverrides,
+		&i.Subagents,
 	)
 	return i, err
 }
 
 const listChildUnits = `-- name: ListChildUnits :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units WHERE parent_unit_id = ?1 ORDER BY seq
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides, subagents FROM units WHERE parent_unit_id = ?1 ORDER BY seq
 `
 
 func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullString) ([]Unit, error) {
@@ -146,6 +150,7 @@ func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullStrin
 			&i.MergeRound,
 			&i.MergeAdmin,
 			&i.RunOverrides,
+			&i.Subagents,
 		); err != nil {
 			return nil, err
 		}
@@ -161,7 +166,7 @@ func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullStrin
 }
 
 const listUnits = `-- name: ListUnits :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides, subagents FROM units
 WHERE (?1 IS NULL OR project_id = ?1)
 ORDER BY updated_at DESC
 LIMIT ?2
@@ -202,6 +207,7 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Unit, e
 			&i.MergeRound,
 			&i.MergeAdmin,
 			&i.RunOverrides,
+			&i.Subagents,
 		); err != nil {
 			return nil, err
 		}
@@ -217,7 +223,7 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Unit, e
 }
 
 const listUnitsInStates = `-- name: ListUnitsInStates :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units WHERE state IN (/*SLICE:states*/?) ORDER BY updated_at
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides, subagents FROM units WHERE state IN (/*SLICE:states*/?) ORDER BY updated_at
 `
 
 func (q *Queries) ListUnitsInStates(ctx context.Context, states []string) ([]Unit, error) {
@@ -260,6 +266,7 @@ func (q *Queries) ListUnitsInStates(ctx context.Context, states []string) ([]Uni
 			&i.MergeRound,
 			&i.MergeAdmin,
 			&i.RunOverrides,
+			&i.Subagents,
 		); err != nil {
 			return nil, err
 		}
@@ -348,6 +355,21 @@ type SetUnitReviewIterationParams struct {
 
 func (q *Queries) SetUnitReviewIteration(ctx context.Context, arg SetUnitReviewIterationParams) error {
 	_, err := q.db.ExecContext(ctx, setUnitReviewIteration, arg.ReviewIteration, arg.Now, arg.ID)
+	return err
+}
+
+const setUnitSubagents = `-- name: SetUnitSubagents :exec
+UPDATE units SET subagents = ?1, updated_at = ?2 WHERE id = ?3
+`
+
+type SetUnitSubagentsParams struct {
+	Subagents bool      `json:"subagents"`
+	Now       time.Time `json:"now"`
+	ID        string    `json:"id"`
+}
+
+func (q *Queries) SetUnitSubagents(ctx context.Context, arg SetUnitSubagentsParams) error {
+	_, err := q.db.ExecContext(ctx, setUnitSubagents, arg.Subagents, arg.Now, arg.ID)
 	return err
 }
 

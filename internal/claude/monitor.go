@@ -26,6 +26,11 @@ type monitor struct {
 	rateLimited bool
 	denials     int
 
+	// resumed is set when the session carries on after a result: woken by
+	// a sub-agent reporting back, it starts another turn.
+	resumed bool
+	agents  map[string]bool // sub-agents (task ids) still running
+
 	toolNames     map[string]string // tool_use id → tool name
 	hookResponses map[string]int    // tool → guard (PreToolUse hook) responses
 	executed      map[string]int    // tool → calls that ran (non-error results)
@@ -42,7 +47,15 @@ func newMonitor(spec *Spec) *monitor {
 		hookResponses: map[string]int{},
 		executed:      map[string]int{},
 		commands:      map[string]string{},
+		agents:        map[string]bool{},
 	}
+}
+
+// idle reports whether the session's work is done: it reported a result, no
+// sub-agent is still working, and it has not resumed since. Anything it does
+// after that is lingering on background shell commands.
+func (m *monitor) idle() bool {
+	return m.result != nil && !m.resumed && len(m.agents) == 0
 }
 
 // observe records ev and returns a non-empty reason when the run must abort.
@@ -51,6 +64,7 @@ func (m *monitor) observe(ev Event) string {
 	case TypeSystem:
 		return m.observeSystem(ev)
 	case TypeAssistant:
+		m.resumed = m.result != nil
 		if msg, ok := ev.Message(); ok {
 			for _, b := range msg.Content {
 				if b.Type == "tool_use" && b.ID != "" {
@@ -103,7 +117,10 @@ func (m *monitor) observe(ev Event) string {
 		}
 	case TypeResult:
 		if r, ok := ev.Result(); ok {
-			m.result = r
+			if m.result != nil {
+				r.mergeEarlier(m.result)
+			}
+			m.result, m.resumed = r, false
 		}
 	}
 	return ""
@@ -117,6 +134,8 @@ func (m *monitor) observeSystem(ev Event) string {
 			return ""
 		}
 		m.init = init
+		// The session announces itself again at every turn.
+		m.resumed = m.result != nil
 		// Auto mode falls back to the default mode, silently, where it is not
 		// available; headless, every edit would then be denied.
 		if want := m.spec.PermissionMode; want != "" && init.PermissionMode != want {
@@ -148,7 +167,18 @@ func (m *monitor) observeSystem(ev Event) string {
 		if code := *h.ExitCode; code != 0 && code != 2 {
 			return fmt.Sprintf("guard hook %s failed with exit %d: %s", h.HookName, code, strings.TrimSpace(h.Stderr))
 		}
+	case SubTaskStarted, SubTaskUpdated, SubTaskNotification:
+		t, ok := ev.Task()
+		if !ok {
+			return ""
+		}
+		if ev.Subtype == SubTaskStarted && t.TaskType == TaskTypeAgent {
+			m.agents[t.TaskID] = true
+		} else if t.Ended() != "" {
+			delete(m.agents, t.TaskID)
+		}
 	case SubPermissionDenied:
+		// Sub-agents' denials count too: they are the run's.
 		m.denials++
 		if m.spec.MaxDenials > 0 && m.denials > m.spec.MaxDenials {
 			return fmt.Sprintf("more than %d permission denials", m.spec.MaxDenials)

@@ -179,6 +179,30 @@ func TestRunLingerAfterResult(t *testing.T) {
 	}
 }
 
+// A session with sub-agents reports a result at the end of each turn, then
+// resumes when a sub-agent reports back (docs/spike.md). A resumed turn that
+// outlasts the post-result grace must not be cut short, and the run's result
+// covers every turn.
+func TestRunWaitsForResumedTurn(t *testing.T) {
+	f := newFakeRun(t, "resume-slowly", "q10-subagents")
+	f.spec.Env = append(f.spec.Env, "FAKE_PAUSE=0.6") // three times the grace
+	f.spec.PermissionMode = ModeAuto
+	out, evs := f.run(t, context.Background())
+	if out.Status != StatusSucceeded {
+		t.Fatalf("status = %s (%s)", out.Status, out.Reason)
+	}
+	if last := evs[len(evs)-1]; last.Type != TypeResult {
+		t.Fatalf("the run stopped before its last result, at a %s event", last.Type)
+	}
+	r := out.Result
+	if r.TotalCostUSD != 0.14690019999999998 {
+		t.Errorf("cost = %v, want the last, cumulative one", r.TotalCostUSD)
+	}
+	if r.NumTurns != 9 || len(r.PermissionDenials) != 1 {
+		t.Errorf("turns = %d and denials = %d, want every turn's (9 and 1)", r.NumTurns, len(r.PermissionDenials))
+	}
+}
+
 func TestRunWithoutResult(t *testing.T) {
 	out, _ := newFakeRun(t, "fail", "q1-empty").run(t, context.Background())
 	if out.Status != StatusFailed || out.ExitCode != 3 || !strings.Contains(out.Reason, "boom") {

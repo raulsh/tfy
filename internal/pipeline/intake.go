@@ -558,6 +558,9 @@ type FromFeedbackInput struct {
 	// RunOverrides choose other models or effort levels for the unit's
 	// runs than the configuration's.
 	RunOverrides domain.RunOverrides `json:"run_overrides"`
+	// Subagents, when false, keeps the unit's runs from starting
+	// sub-agents.
+	Subagents *bool `json:"subagents,omitempty"`
 }
 
 // CreateUnitFromFeedback groups messages into one unit and starts defining
@@ -616,6 +619,7 @@ func (p *Pipeline) CreateUnitFromFeedback(ctx context.Context, in FromFeedbackIn
 	u, err := p.newUnit(ctx, unitSpec{
 		ProjectID: projectID, Kind: kind, Title: title, Description: in.Description,
 		Origin: domain.OriginSlackManual, State: domain.StateDefining, CreatedBy: in.CreatedBy, RunOverrides: in.RunOverrides,
+		NoSubagents: off(in.Subagents),
 	})
 	if err != nil {
 		return u, err

@@ -50,6 +50,7 @@ export interface FromFeedback {
 	kind: string;
 	description: string;
 	run_overrides?: RunOverrides;
+	subagents?: boolean;
 }
 
 export function useUnitFromFeedback() {

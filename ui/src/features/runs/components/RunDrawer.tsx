@@ -1,5 +1,6 @@
 import { App, Button, Popconfirm, Spin } from "antd";
 import { Square } from "lucide-react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Chip } from "@/shared/components/Chip";
 import { JsonView, Metric, Mono } from "@/shared/components/misc";
@@ -21,6 +22,13 @@ export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => v
 	const status = stream.status ?? run?.status ?? "queued";
 	const live = isRunLive(status);
 	const tone = runTone(status);
+	const subagents = useMemo(
+		() =>
+			stream.events.filter(
+				(e) => e.type === "system" && e.subtype === "task_started" && e.payload?.task_type === "local_agent",
+			).length,
+		[stream.events],
+	);
 
 	return (
 		<OverlayDrawer
@@ -95,6 +103,7 @@ export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => v
 							hint="in / out"
 						/>
 						<Metric label="Denials" value={run.denials} tone={run.denials ? toneColor.warn : undefined} />
+						{subagents > 0 && <Metric label="Sub-agents" value={subagents} hint="started by this run" />}
 					</div>
 					{run.reason && !live && run.status !== "succeeded" && (
 						<Card title="Why it stopped">

@@ -36,10 +36,12 @@ func (s *Server) routes(r fiber.Router) {
 	r.Get("/units", s.listUnits)
 	r.Post("/units", s.createUnit)
 	r.Get("/units/:id", s.getUnit)
+	r.Patch("/units/:id", s.updateUnit)
 	r.Post("/units/:id/actions/:action", s.unitAction)
 	r.Get("/units/:id/documents/:kind", s.getDocument)
 	r.Put("/units/:id/documents/:kind", s.putDocument)
 
+	r.Get("/agents", s.agents)
 	r.Get("/runs", s.listRuns)
 	r.Get("/runs/:id", s.getRun)
 	r.Get("/runs/:id/events", s.runEvents)
@@ -410,6 +412,32 @@ func (s *Server) unitAction(c fiber.Ctx) error {
 	}
 	busy := s.Pipeline.Busy(c.Context(), u.ID)
 	return ok(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
+}
+
+// updateUnit changes a unit's settings: for now, whether its runs may start
+// sub-agents.
+func (s *Server) updateUnit(c fiber.Ctx) error {
+	var in struct {
+		Subagents *bool  `json:"subagents"`
+		Actor     string `json:"actor"`
+	}
+	if err := c.Bind().Body(&in); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if in.Subagents == nil {
+		return fiber.NewError(fiber.StatusBadRequest, "nothing to change")
+	}
+	u, err := s.Pipeline.SetSubagents(c.Context(), c.Params("id"), *in.Subagents, in.Actor)
+	if err != nil {
+		return err
+	}
+	busy := s.Pipeline.Busy(c.Context(), u.ID)
+	return ok(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
+}
+
+// agents is what every run going now is doing, with its sub-agents.
+func (s *Server) agents(c fiber.Ctx) error {
+	return ok(c, s.Pipeline.Agents())
 }
 
 func (s *Server) getDocument(c fiber.Ctx) error {

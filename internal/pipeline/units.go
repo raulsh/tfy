@@ -38,6 +38,9 @@ type CreateUnitInput struct {
 	// RunOverrides choose other models or effort levels for the unit's
 	// runs than the configuration's.
 	RunOverrides domain.RunOverrides `json:"run_overrides"`
+	// Subagents, when false, keeps the unit's runs from starting
+	// sub-agents. They may by default.
+	Subagents *bool `json:"subagents,omitempty"`
 }
 
 // CreateUnit registers a unit and starts defining it. Developer units skip
@@ -53,6 +56,7 @@ func (p *Pipeline) CreateUnit(ctx context.Context, in CreateUnitInput) (db.Unit,
 	u, err := p.newUnit(ctx, unitSpec{
 		ProjectID: in.ProjectID, Kind: kind, Title: in.Title, Description: in.Description,
 		Origin: domain.OriginDeveloper, State: domain.StateDefining, CreatedBy: in.CreatedBy, RunOverrides: in.RunOverrides,
+		NoSubagents: off(in.Subagents),
 	})
 	if err != nil {
 		return u, err
@@ -72,7 +76,11 @@ type unitSpec struct {
 	CreatedBy    string
 	ParentUnitID string
 	RunOverrides domain.RunOverrides
+	NoSubagents  bool
 }
+
+// off reports whether an optional switch was turned off.
+func off(v *bool) bool { return v != nil && !*v }
 
 // newUnit inserts a unit and prepares its workspace.
 func (p *Pipeline) newUnit(ctx context.Context, s unitSpec) (db.Unit, error) {
@@ -99,7 +107,8 @@ func (p *Pipeline) newUnit(ctx context.Context, s unitSpec) (db.Unit, error) {
 		u, err = q.CreateUnit(ctx, db.CreateUnitParams{
 			ID: newID(), Seq: seq, ProjectID: s.ProjectID, ParentUnitID: store.NullString(s.ParentUnitID), Kind: string(s.Kind), Title: title,
 			Summary: strings.TrimSpace(s.Summary), Description: strings.TrimSpace(s.Description), Origin: string(s.Origin),
-			State: string(s.State), WorkspacePath: p.workspacePath(seq, title), CreatedBy: s.CreatedBy, RunOverrides: overrides.JSON(), Now: store.Now(),
+			State: string(s.State), WorkspacePath: p.workspacePath(seq, title), CreatedBy: s.CreatedBy, RunOverrides: overrides.JSON(),
+			Subagents: !s.NoSubagents, Now: store.Now(),
 		})
 		return err
 	})
@@ -233,6 +242,43 @@ func (p *Pipeline) Actions(ctx context.Context, u db.Unit, busy bool) []string {
 		out = append(out, ActionBackToMerge)
 	}
 	return out
+}
+
+// SetSubagents lets the unit's runs start sub-agents, or stops them from
+// it. Runs already going keep what they started with.
+func (p *Pipeline) SetSubagents(ctx context.Context, unitID string, on bool, actor string) (db.Unit, error) {
+	u, err := p.Store.Q.GetUnit(ctx, unitID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return u, &NotFoundError{What: "unit"}
+		}
+		return u, err
+	}
+	if u.Subagents == on {
+		return u, nil
+	}
+	if err := p.Store.Q.SetUnitSubagents(ctx, db.SetUnitSubagentsParams{Subagents: on, Now: store.Now(), ID: u.ID}); err != nil {
+		return u, err
+	}
+	msg := "sub-agents turned off: the next runs work alone"
+	if on {
+		msg = "sub-agents turned on for the next runs"
+	}
+	p.activity(ctx, u.ID, actorOr(actor), "settings", msg, nil)
+	p.changed("unit", u.ID)
+	return p.Store.Q.GetUnit(ctx, u.ID)
+}
+
+// subagentsAllowed reads the unit's choice afresh: it may have changed
+// since its job started.
+func (p *Pipeline) subagentsAllowed(ctx context.Context, u db.Unit) bool {
+	if u.ID == "" {
+		return false
+	}
+	if fresh, err := p.Store.Q.GetUnit(ctx, u.ID); err == nil {
+		return fresh.Subagents
+	}
+	return u.Subagents
 }
 
 // Busy reports whether the unit has a job queued or running.

@@ -69,6 +69,7 @@ export const toolColors: Record<string, string> = {
 	WebSearch: "#F2A7B8",
 	StructuredOutput: "#A9C8F5",
 	Task: "#E8D48A",
+	Agent: "#E8D48A",
 };
 
 export const fonts = {

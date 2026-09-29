@@ -58,8 +58,10 @@ type Runner struct {
 	Bin string
 	Log *slog.Logger
 
-	// PostResultGrace is how long the process may linger after its result
-	// event (it waits on background tasks) before it is stopped.
+	// PostResultGrace is how long the process may linger once its work is
+	// done (it waits on background shell commands) before it is stopped.
+	// Sub-agents still working, or a session that resumes after a result,
+	// hold it off.
 	PostResultGrace time.Duration
 	// InterruptGrace separates SIGINT from SIGTERM, TerminateGrace SIGTERM
 	// from SIGKILL. SIGINT goes first: it still yields a result event.
@@ -192,18 +194,22 @@ func (r *Runner) Run(ctx context.Context, spec *Spec, cb Callbacks) *Outcome {
 				r.log().Warn("aborting claude run", "pid", pgid, "reason", why)
 				stop()
 			}
-			if ev.Type == TypeResult && graceC == nil {
+			// The grace runs while the session is idle, and not while its
+			// sub-agents work on after a result or it resumes for them.
+			if !mon.idle() {
+				graceC = nil
+			} else if graceC == nil {
 				graceC = time.After(orDefault(r.PostResultGrace, 30*time.Second))
 			}
 		case <-ctxDone:
 			ctxDone = nil
-			// Once the result is in, the work is done: stopping a lingering
-			// process is not a cancellation.
-			cancelled = mon.result == nil
+			// Once the work is done, stopping a lingering process is not a
+			// cancellation.
+			cancelled = !mon.idle()
 			stop()
 		case <-timeoutC:
 			timeoutC = nil
-			timedOut = mon.result == nil
+			timedOut = !mon.idle()
 			stop()
 		case <-graceC:
 			graceC = nil

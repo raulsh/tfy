@@ -3,9 +3,9 @@ SELECT CAST(COALESCE(MAX(seq), 0) + 1 AS INTEGER) AS next FROM units;
 
 -- name: CreateUnit :one
 INSERT INTO units (id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state,
-                   workspace_path, created_by, run_overrides, created_at, updated_at)
+                   workspace_path, created_by, run_overrides, subagents, created_at, updated_at)
 VALUES (@id, @seq, @project_id, @parent_unit_id, @kind, @title, @summary, @description, @origin, @state,
-        @workspace_path, @created_by, @run_overrides, @now, @now)
+        @workspace_path, @created_by, @run_overrides, @subagents, @now, @now)
 RETURNING *;
 
 -- name: GetUnit :one
@@ -49,3 +49,6 @@ UPDATE units SET merge_round = @merge_round, updated_at = @now WHERE id = @id;
 
 -- name: SetUnitMergeAdmin :exec
 UPDATE units SET merge_admin = @merge_admin, updated_at = @now WHERE id = @id;
+
+-- name: SetUnitSubagents :exec
+UPDATE units SET subagents = @subagents, updated_at = @now WHERE id = @id;

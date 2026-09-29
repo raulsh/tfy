@@ -27,6 +27,18 @@ case "$FAKE_MODE" in
     trap '' INT
     head -n 1 "$FAKE_FIXTURE"
     while :; do sleep 0.1; done ;;
+  resume-slowly)
+    # A session with sub-agents resumes after a result, for another turn
+    # that takes FAKE_PAUSE seconds before its first message.
+    seen_result=
+    while IFS= read -r line; do
+      printf '%s\n' "$line"
+      case "$line" in
+        '{"type":"assistant"'*|'{"type":"user"'*) ;;
+        *'"type":"result"'*) seen_result=1 ;;
+        '{"type":"system","subtype":"init"'*) [ -n "$seen_result" ] && sleep "${FAKE_PAUSE:-0.5}" ;;
+      esac
+    done < "$FAKE_FIXTURE" ;;
   fail)
     echo "boom: something broke" >&2
     exit 3 ;;
