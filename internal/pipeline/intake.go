@@ -555,6 +555,9 @@ type FromFeedbackInput struct {
 	Kind        string   `json:"kind"`
 	Description string   `json:"description"`
 	CreatedBy   string   `json:"created_by"`
+	// RunOverrides choose other models or effort levels for the unit's
+	// runs than the configuration's.
+	RunOverrides domain.RunOverrides `json:"run_overrides"`
 }
 
 // CreateUnitFromFeedback groups messages into one unit and starts defining
@@ -612,7 +615,7 @@ func (p *Pipeline) CreateUnitFromFeedback(ctx context.Context, in FromFeedbackIn
 	}
 	u, err := p.newUnit(ctx, unitSpec{
 		ProjectID: projectID, Kind: kind, Title: title, Description: in.Description,
-		Origin: domain.OriginSlackManual, State: domain.StateDefining, CreatedBy: in.CreatedBy,
+		Origin: domain.OriginSlackManual, State: domain.StateDefining, CreatedBy: in.CreatedBy, RunOverrides: in.RunOverrides,
 	})
 	if err != nil {
 		return u, err

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/shared/api/client";
-import type { Feedback, SlackChannel, SlackSource, Unit } from "@/shared/api/types";
+import type { Feedback, RunOverrides, SlackChannel, SlackSource, Unit } from "@/shared/api/types";
 
 export function useFeedback(projectId?: string) {
 	return useQuery({
@@ -49,6 +49,7 @@ export interface FromFeedback {
 	title: string;
 	kind: string;
 	description: string;
+	run_overrides?: RunOverrides;
 }
 
 export function useUnitFromFeedback() {

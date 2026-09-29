@@ -165,6 +165,7 @@ type Unit struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 	MergeRound      int64          `json:"merge_round"`
 	MergeAdmin      bool           `json:"merge_admin"`
+	RunOverrides    string         `json:"run_overrides"`
 }
 
 type UnitIssue struct {

@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ranges, useScope } from "@/app/scope";
 import { useProjects } from "@/features/projects/hooks";
+import { RunOverridesField } from "@/features/units/components/RunOverrides";
 import { useStats } from "@/shared/api/system";
 import type { Feedback } from "@/shared/api/types";
 import { FacetPanel } from "@/shared/components/FacetPanel";
@@ -261,6 +262,7 @@ function CreateUnitModal({
 				<Form.Item name="description" label="Note for Claude">
 					<Input.TextArea autoSize={{ minRows: 2 }} placeholder="Optional context the messages don't carry" />
 				</Form.Item>
+				<RunOverridesField />
 			</Form>
 		</Modal>
 	);

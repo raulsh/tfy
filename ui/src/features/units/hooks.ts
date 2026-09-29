@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/shared/api/client";
-import type { DocumentMeta, LinkedIssue, Unit, UnitAction, UnitDetail, UnitDocument } from "@/shared/api/types";
+import type {
+	DocumentMeta,
+	LinkedIssue,
+	RunOverrides,
+	Unit,
+	UnitAction,
+	UnitDetail,
+	UnitDocument,
+} from "@/shared/api/types";
 
 export function useUnits(projectId?: string) {
 	return useQuery({
@@ -36,6 +44,7 @@ export interface NewUnit {
 	description: string;
 	// A GitHub issue the unit is for: a link, owner/repo#12, or #12.
 	issue?: string;
+	run_overrides?: RunOverrides;
 }
 
 export function useCreateUnit() {

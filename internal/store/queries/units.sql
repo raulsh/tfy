@@ -3,9 +3,9 @@ SELECT CAST(COALESCE(MAX(seq), 0) + 1 AS INTEGER) AS next FROM units;
 
 -- name: CreateUnit :one
 INSERT INTO units (id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state,
-                   workspace_path, created_by, created_at, updated_at)
+                   workspace_path, created_by, run_overrides, created_at, updated_at)
 VALUES (@id, @seq, @project_id, @parent_unit_id, @kind, @title, @summary, @description, @origin, @state,
-        @workspace_path, @created_by, @now, @now)
+        @workspace_path, @created_by, @run_overrides, @now, @now)
 RETURNING *;
 
 -- name: GetUnit :one

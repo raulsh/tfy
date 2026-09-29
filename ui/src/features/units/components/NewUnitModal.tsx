@@ -5,6 +5,7 @@ import { useScope } from "@/app/scope";
 import { IssuePicker, kindFromLabels } from "@/features/projects/components/IssuePicker";
 import { useProjects } from "@/features/projects/hooks";
 import { type NewUnit, useCreateUnit } from "../hooks";
+import { RunOverridesField } from "./RunOverrides";
 
 // A developer's feature or bugfix: it skips intake and goes straight to
 // definition. defaults prefill the form, e.g. a change to the conventions.
@@ -106,6 +107,7 @@ export function NewUnitModal({
 						placeholder="What is wrong or missing, who is affected, anything Claude should know."
 					/>
 				</Form.Item>
+				<RunOverridesField />
 			</Form>
 		</Modal>
 	);

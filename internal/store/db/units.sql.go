@@ -14,10 +14,10 @@ import (
 
 const createUnit = `-- name: CreateUnit :one
 INSERT INTO units (id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state,
-                   workspace_path, created_by, created_at, updated_at)
+                   workspace_path, created_by, run_overrides, created_at, updated_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-        ?11, ?12, ?13, ?13)
-RETURNING id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin
+        ?11, ?12, ?13, ?14, ?14)
+RETURNING id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides
 `
 
 type CreateUnitParams struct {
@@ -33,6 +33,7 @@ type CreateUnitParams struct {
 	State         string         `json:"state"`
 	WorkspacePath string         `json:"workspace_path"`
 	CreatedBy     string         `json:"created_by"`
+	RunOverrides  string         `json:"run_overrides"`
 	Now           time.Time      `json:"now"`
 }
 
@@ -50,6 +51,7 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Unit, e
 		arg.State,
 		arg.WorkspacePath,
 		arg.CreatedBy,
+		arg.RunOverrides,
 		arg.Now,
 	)
 	var i Unit
@@ -73,12 +75,13 @@ func (q *Queries) CreateUnit(ctx context.Context, arg CreateUnitParams) (Unit, e
 		&i.UpdatedAt,
 		&i.MergeRound,
 		&i.MergeAdmin,
+		&i.RunOverrides,
 	)
 	return i, err
 }
 
 const getUnit = `-- name: GetUnit :one
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units WHERE id = ?1
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units WHERE id = ?1
 `
 
 func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
@@ -104,12 +107,13 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (Unit, error) {
 		&i.UpdatedAt,
 		&i.MergeRound,
 		&i.MergeAdmin,
+		&i.RunOverrides,
 	)
 	return i, err
 }
 
 const listChildUnits = `-- name: ListChildUnits :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units WHERE parent_unit_id = ?1 ORDER BY seq
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units WHERE parent_unit_id = ?1 ORDER BY seq
 `
 
 func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullString) ([]Unit, error) {
@@ -141,6 +145,7 @@ func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullStrin
 			&i.UpdatedAt,
 			&i.MergeRound,
 			&i.MergeAdmin,
+			&i.RunOverrides,
 		); err != nil {
 			return nil, err
 		}
@@ -156,7 +161,7 @@ func (q *Queries) ListChildUnits(ctx context.Context, parentUnitID sql.NullStrin
 }
 
 const listUnits = `-- name: ListUnits :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units
 WHERE (?1 IS NULL OR project_id = ?1)
 ORDER BY updated_at DESC
 LIMIT ?2
@@ -196,6 +201,7 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Unit, e
 			&i.UpdatedAt,
 			&i.MergeRound,
 			&i.MergeAdmin,
+			&i.RunOverrides,
 		); err != nil {
 			return nil, err
 		}
@@ -211,7 +217,7 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Unit, e
 }
 
 const listUnitsInStates = `-- name: ListUnitsInStates :many
-SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin FROM units WHERE state IN (/*SLICE:states*/?) ORDER BY updated_at
+SELECT id, seq, project_id, parent_unit_id, kind, title, summary, description, origin, state, attention, attention_detail, review_iteration, workspace_path, created_by, created_at, updated_at, merge_round, merge_admin, run_overrides FROM units WHERE state IN (/*SLICE:states*/?) ORDER BY updated_at
 `
 
 func (q *Queries) ListUnitsInStates(ctx context.Context, states []string) ([]Unit, error) {
@@ -253,6 +259,7 @@ func (q *Queries) ListUnitsInStates(ctx context.Context, states []string) ([]Uni
 			&i.UpdatedAt,
 			&i.MergeRound,
 			&i.MergeAdmin,
+			&i.RunOverrides,
 		); err != nil {
 			return nil, err
 		}

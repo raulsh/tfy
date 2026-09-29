@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -47,6 +48,10 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 		return db.Run{}, nil, fmt.Errorf("no run profile %q", req.Kind)
 	}
 	stage := p.Config.Stage(req.Kind)
+	// The unit may have been given another model or effort for this run.
+	if o, ok := domain.ParseRunOverrides(req.Unit.RunOverrides)[req.Kind]; ok {
+		stage.Model, stage.Effort = cmp.Or(o.Model, stage.Model), cmp.Or(o.Effort, stage.Effort)
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return db.Run{}, nil, err

@@ -35,6 +35,9 @@ type CreateUnitInput struct {
 	// Issue, when set, is the GitHub issue the unit is for (a link,
 	// owner/repo#12 or #12). Title and kind then default to the issue's.
 	Issue string `json:"issue"`
+	// RunOverrides choose other models or effort levels for the unit's
+	// runs than the configuration's.
+	RunOverrides domain.RunOverrides `json:"run_overrides"`
 }
 
 // CreateUnit registers a unit and starts defining it. Developer units skip
@@ -49,7 +52,7 @@ func (p *Pipeline) CreateUnit(ctx context.Context, in CreateUnitInput) (db.Unit,
 	}
 	u, err := p.newUnit(ctx, unitSpec{
 		ProjectID: in.ProjectID, Kind: kind, Title: in.Title, Description: in.Description,
-		Origin: domain.OriginDeveloper, State: domain.StateDefining, CreatedBy: in.CreatedBy,
+		Origin: domain.OriginDeveloper, State: domain.StateDefining, CreatedBy: in.CreatedBy, RunOverrides: in.RunOverrides,
 	})
 	if err != nil {
 		return u, err
@@ -68,6 +71,7 @@ type unitSpec struct {
 	State        domain.State
 	CreatedBy    string
 	ParentUnitID string
+	RunOverrides domain.RunOverrides
 }
 
 // newUnit inserts a unit and prepares its workspace.
@@ -76,6 +80,10 @@ func (p *Pipeline) newUnit(ctx context.Context, s unitSpec) (db.Unit, error) {
 	if title == "" {
 		return db.Unit{}, &InvalidError{Msg: "a title is required"}
 	}
+	overrides, err := s.RunOverrides.Normalize()
+	if err != nil {
+		return db.Unit{}, &InvalidError{Msg: err.Error()}
+	}
 	if _, err := p.Store.Q.GetProject(ctx, s.ProjectID); err != nil {
 		if store.IsNotFound(err) {
 			return db.Unit{}, &NotFoundError{What: "project"}
@@ -83,7 +91,7 @@ func (p *Pipeline) newUnit(ctx context.Context, s unitSpec) (db.Unit, error) {
 		return db.Unit{}, err
 	}
 	var u db.Unit
-	err := p.Store.Tx(ctx, func(q *db.Queries) error {
+	err = p.Store.Tx(ctx, func(q *db.Queries) error {
 		seq, err := q.NextUnitSeq(ctx)
 		if err != nil {
 			return err
@@ -91,7 +99,7 @@ func (p *Pipeline) newUnit(ctx context.Context, s unitSpec) (db.Unit, error) {
 		u, err = q.CreateUnit(ctx, db.CreateUnitParams{
 			ID: newID(), Seq: seq, ProjectID: s.ProjectID, ParentUnitID: store.NullString(s.ParentUnitID), Kind: string(s.Kind), Title: title,
 			Summary: strings.TrimSpace(s.Summary), Description: strings.TrimSpace(s.Description), Origin: string(s.Origin),
-			State: string(s.State), WorkspacePath: p.workspacePath(seq, title), CreatedBy: s.CreatedBy, Now: store.Now(),
+			State: string(s.State), WorkspacePath: p.workspacePath(seq, title), CreatedBy: s.CreatedBy, RunOverrides: overrides.JSON(), Now: store.Now(),
 		})
 		return err
 	})

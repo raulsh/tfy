@@ -58,11 +58,21 @@ export interface Unit {
 	merge_round: number;
 	workspace_path: string;
 	created_by: string;
+	run_overrides: RunOverrides;
 	created_at: string;
 	updated_at: string;
 	busy: boolean;
 	actions: UnitAction[];
 }
+
+// Another model or effort level for one kind of a unit's runs, over the
+// configuration's. What is empty runs as configured.
+export interface RunOverride {
+	model?: string;
+	effort?: string;
+}
+
+export type RunOverrides = Record<string, RunOverride>;
 
 export interface UnitRepo {
 	repo_id: string;

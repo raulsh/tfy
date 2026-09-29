@@ -15,6 +15,7 @@ import { IssuesCard } from "../components/IssuesCard";
 import { AttentionBanner, StageStepper, UnitActions, UnitStateTag } from "../components/parts";
 import { ReleasePanel } from "../components/ReleasePanel";
 import { RetrospectiveCard } from "../components/RetrospectiveCard";
+import { RunOverridesList } from "../components/RunOverrides";
 import { useUnit } from "../hooks";
 
 function tabLabel(icon: ReactNode, text: string, badge?: ReactNode) {
@@ -206,6 +207,9 @@ export default function UnitPage() {
 										: []),
 									["Review rounds", unit.review_iteration],
 									["Runs", `${unit.runs.length} (${usd(spend)})`],
+									...(Object.keys(unit.run_overrides ?? {}).length > 0
+										? [["Models", <RunOverridesList key="m" overrides={unit.run_overrides} />] as [string, ReactNode]]
+										: []),
 									[
 										"Workspace",
 										<Mono key="w" faint>

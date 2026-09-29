@@ -12,29 +12,30 @@ import (
 // null wrappers, plus derived fields.
 
 type UnitView struct {
-	ID              string    `json:"id"`
-	Seq             int64     `json:"seq"`
-	Label           string    `json:"label"`
-	ProjectID       string    `json:"project_id"`
-	ProjectName     string    `json:"project_name,omitempty"`
-	ParentUnitID    string    `json:"parent_unit_id,omitempty"`
-	Kind            string    `json:"kind"`
-	Title           string    `json:"title"`
-	Summary         string    `json:"summary"`
-	Description     string    `json:"description"`
-	Origin          string    `json:"origin"`
-	State           string    `json:"state"`
-	Stage           string    `json:"stage"`
-	Attention       string    `json:"attention"`
-	AttentionDetail string    `json:"attention_detail"`
-	ReviewIteration int64     `json:"review_iteration"`
-	MergeRound      int64     `json:"merge_round"`
-	WorkspacePath   string    `json:"workspace_path"`
-	CreatedBy       string    `json:"created_by"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	Busy            bool      `json:"busy"`
-	Actions         []string  `json:"actions"`
+	ID              string              `json:"id"`
+	Seq             int64               `json:"seq"`
+	Label           string              `json:"label"`
+	ProjectID       string              `json:"project_id"`
+	ProjectName     string              `json:"project_name,omitempty"`
+	ParentUnitID    string              `json:"parent_unit_id,omitempty"`
+	Kind            string              `json:"kind"`
+	Title           string              `json:"title"`
+	Summary         string              `json:"summary"`
+	Description     string              `json:"description"`
+	Origin          string              `json:"origin"`
+	State           string              `json:"state"`
+	Stage           string              `json:"stage"`
+	Attention       string              `json:"attention"`
+	AttentionDetail string              `json:"attention_detail"`
+	ReviewIteration int64               `json:"review_iteration"`
+	MergeRound      int64               `json:"merge_round"`
+	WorkspacePath   string              `json:"workspace_path"`
+	CreatedBy       string              `json:"created_by"`
+	RunOverrides    domain.RunOverrides `json:"run_overrides"`
+	CreatedAt       time.Time           `json:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at"`
+	Busy            bool                `json:"busy"`
+	Actions         []string            `json:"actions"`
 }
 
 func unitView(u db.Unit, busy bool, actions []string, projectName string) UnitView {
@@ -43,7 +44,7 @@ func unitView(u db.Unit, busy bool, actions []string, projectName string) UnitVi
 		ParentUnitID: u.ParentUnitID.String, Kind: u.Kind, Title: u.Title, Summary: u.Summary, Description: u.Description, Origin: u.Origin,
 		State: u.State, Stage: string(domain.State(u.State).Stage()), Attention: u.Attention,
 		AttentionDetail: u.AttentionDetail, ReviewIteration: u.ReviewIteration, MergeRound: u.MergeRound, WorkspacePath: u.WorkspacePath,
-		CreatedBy: u.CreatedBy, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Busy: busy, Actions: actions,
+		CreatedBy: u.CreatedBy, RunOverrides: domain.ParseRunOverrides(u.RunOverrides), CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Busy: busy, Actions: actions,
 	}
 }
 

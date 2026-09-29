@@ -1449,3 +1449,46 @@ func TestReviewDecision(t *testing.T) {
 		}
 	}
 }
+
+// A unit created with other models or effort levels for some of its runs
+// runs them so, and the rest as configured.
+func TestRunOverridesChooseAUnitsModels(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	pr := h.project()
+	if _, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Title: "Health lies", RunOverrides: domain.RunOverrides{"develop": {Effort: "extreme"}}}); err == nil {
+		t.Fatal("an unknown effort level must be refused")
+	}
+	if units, _ := h.st.Q.ListUnits(ctx, db.ListUnitsParams{Lim: 10}); len(units) != 0 {
+		t.Fatalf("a refused unit must not be created: %d unit(s)", len(units))
+	}
+
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down",
+		RunOverrides: domain.RunOverrides{"define": {Model: "sonnet", Effort: "low"}, "plan": {Effort: "max"}, "review": {}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.RunOverrides != `{"define":{"model":"sonnet","effort":"low"},"plan":{"effort":"max"}}` {
+		t.Errorf("stored overrides = %s", u.RunOverrides)
+	}
+	u = h.waitState(u.ID, domain.StateDefinitionReview)
+	if _, err := h.p.Act(ctx, u.ID, ActionMarkReady, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	u = h.waitState(u.ID, domain.StateSpecReview)
+
+	plan := h.p.Config.Stage("plan")
+	for kind, want := range map[string][2]string{"define": {"sonnet", "low"}, "plan": {plan.Model, "max"}} {
+		var args []string
+		if err := json.Unmarshal([]byte(h.read(filepath.Join(h.control, "args-"+kind+".json"))), &args); err != nil {
+			t.Fatal(err)
+		}
+		if got := [2]string{flagValue(args, "--model"), flagValue(args, "--effort")}; got != want {
+			t.Errorf("%s ran with %v, want %v", kind, got, want)
+		}
+		r, err := h.st.Q.LastSessionRun(ctx, db.LastSessionRunParams{UnitID: store.NullString(u.ID), Kind: kind})
+		if err != nil || r.Model != want[0] || r.Effort != want[1] {
+			t.Errorf("%s run recorded %s at %s (%v), want %v", kind, r.Model, r.Effort, err, want)
+		}
+	}
+}
