@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+type Account struct {
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Cli         string       `json:"cli"`
+	Kind        string       `json:"kind"`
+	Settings    string       `json:"settings"`
+	PausedUntil sql.NullTime `json:"paused_until"`
+	PauseReason string       `json:"pause_reason"`
+	Quota       string       `json:"quota"`
+	QuotaAt     sql.NullTime `json:"quota_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	ModelBlocks string       `json:"model_blocks"`
+}
+
 type Activity struct {
 	ID        int64          `json:"id"`
 	UnitID    sql.NullString `json:"unit_id"`
@@ -18,6 +33,12 @@ type Activity struct {
 	Kind      string         `json:"kind"`
 	Message   string         `json:"message"`
 	Data      string         `json:"data"`
+}
+
+type AppSetting struct {
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Artifact struct {
@@ -83,6 +104,7 @@ type Job struct {
 	CreatedAt  time.Time      `json:"created_at"`
 	StartedAt  sql.NullTime   `json:"started_at"`
 	FinishedAt sql.NullTime   `json:"finished_at"`
+	WaitingOn  string         `json:"waiting_on"`
 }
 
 type Project struct {
@@ -132,6 +154,8 @@ type Run struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	StartedAt      sql.NullTime   `json:"started_at"`
 	EndedAt        sql.NullTime   `json:"ended_at"`
+	AccountID      string         `json:"account_id"`
+	Engine         string         `json:"engine"`
 }
 
 type RunEvent struct {

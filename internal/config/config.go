@@ -237,6 +237,12 @@ func (p Paths) GuardBin() string  { return filepath.Join(p.Root, "bin", "tfy") }
 func (p Paths) GitConfig() string { return filepath.Join(p.Root, "agent", "gitconfig") }
 func (p Paths) GHConfig() string  { return filepath.Join(p.Root, "agent", "gh") }
 func (p Paths) Repos() string     { return filepath.Join(p.Root, "repos") }
+
+// Accounts holds the accounts' secrets, one file each, for the owner only.
+func (p Paths) Accounts() string { return filepath.Join(p.Root, "accounts") }
+
+// AccountSecret is the file holding an account's secret.
+func (p Paths) AccountSecret(id string) string { return filepath.Join(p.Accounts(), id+".secret") }
 func (p Paths) Workspaces() string {
 	return filepath.Join(p.Root, "workspaces")
 }

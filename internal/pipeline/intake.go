@@ -400,16 +400,11 @@ func (p *Pipeline) triage(ctx context.Context, job db.Job) error {
 	if req.Prompt, req.PromptVersion, err = prompts.Render("triage", data); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err == nil && out.Status != "succeeded" {
 		if out.Status == "rate_limited" {
 			_ = p.Store.Q.SetFeedbackStatus(ctx, db.SetFeedbackStatusParams{TriageStatus: FeedbackNew, Now: store.Now(), Ids: ids})
-			until := time.Now().Add(15 * time.Minute)
-			if rl := out.RateLimit; rl != nil && rl.ResetsAt > 0 {
-				until = time.Unix(rl.ResetsAt, 0)
-			}
-			p.Jobs.PauseClaude(until)
-			return &jobs.RetryError{After: time.Until(until) + time.Minute, Err: errors.New("rate limited")}
+			return p.waitOnLimit(ctx, db.Unit{}, out)
 		}
 		err = fmt.Errorf("triage run %s: %s", out.Status, out.Reason)
 	}

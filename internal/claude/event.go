@@ -110,6 +110,8 @@ type Result struct {
 	Usage             Usage           `json:"usage"`
 	TerminalReason    string          `json:"terminal_reason"`
 	StopReason        string          `json:"stop_reason"`
+	// APIErrorStatus is the HTTP status of the API error the run ended on.
+	APIErrorStatus int `json:"api_error_status"`
 }
 
 // mergeEarlier folds in the result of an earlier turn of the same run. A
@@ -158,11 +160,21 @@ type RateLimit struct {
 	ResetsAt       int64                      `json:"resetsAt"`
 	RateLimitType  string                     `json:"rateLimitType"`
 	UnifiedWindows map[string]RateLimitWindow `json:"unifiedWindows"`
+	// ErrorCode says why a request was refused: "credits_required" when
+	// the model needs usage credits the account does not have.
+	ErrorCode string `json:"errorCode"`
 }
 
 // Limited reports whether this event means requests are being refused.
 func (r *RateLimit) Limited() bool {
 	return r.Status != "" && !strings.HasPrefix(r.Status, "allowed")
+}
+
+// NeedsCredits reports a refusal of the model, not of the account: a
+// subscription asked for a model, such as Fable on a Pro plan, that takes
+// usage credits it does not have. Its other models still answer.
+func (r *RateLimit) NeedsCredits() bool {
+	return r.Limited() && r.ErrorCode == "credits_required"
 }
 
 // HookEvent is system/hook_started and system/hook_response. ExitCode and

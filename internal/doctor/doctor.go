@@ -82,8 +82,9 @@ func claudeCheck(ctx context.Context, bin string) Check {
 		AuthMethod       string `json:"authMethod"`
 		SubscriptionType string `json:"subscriptionType"`
 	}
+	// Accounts with their own token, key or provider need no login here.
 	if err != nil || json.Unmarshal([]byte(out), &st) != nil || !st.LoggedIn {
-		c.Status, c.Detail, c.Fix = Fail, v+", not signed in", "run `claude auth login`"
+		c.Status, c.Detail, c.Fix = Warn, v+", not signed in on this machine", "run `claude auth login`, or give runs other accounts in Settings"
 		return c
 	}
 	c.Status = OK

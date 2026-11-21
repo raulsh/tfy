@@ -8,12 +8,10 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/raulsh/tfy/internal/claude"
 	"github.com/raulsh/tfy/internal/domain"
-	"github.com/raulsh/tfy/internal/jobs"
 	"github.com/raulsh/tfy/internal/prompts"
 	"github.com/raulsh/tfy/internal/store"
 	"github.com/raulsh/tfy/internal/store/db"
@@ -91,17 +89,12 @@ func (p *Pipeline) learn(ctx context.Context, job db.Job, u db.Unit) error {
 	if req.System, err = systemPrompt(checkouts); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return err
 	}
 	if out.Status == claude.StatusRateLimited {
-		until := time.Now().Add(15 * time.Minute)
-		if rl := out.RateLimit; rl != nil && rl.ResetsAt > 0 {
-			until = time.Unix(rl.ResetsAt, 0)
-		}
-		p.Jobs.PauseClaude(until)
-		return &jobs.RetryError{After: time.Until(until) + time.Minute, Err: fmt.Errorf("rate limited")}
+		return p.waitOnLimit(ctx, db.Unit{}, out)
 	}
 	if out.Status != claude.StatusSucceeded {
 		p.activity(ctx, u.ID, "system", "retrospective", fmt.Sprintf("retrospective %s: %s", strings.ReplaceAll(string(out.Status), "_", " "), out.Reason), map[string]string{"run_id": run.ID})

@@ -9,9 +9,12 @@ import (
 	"strings"
 )
 
-// UnitRunKinds are the kinds of Claude run a unit has, in pipeline order.
-// Triage is not one: it runs before there is a unit.
+// UnitRunKinds are the kinds of run a unit has, in pipeline order. Triage is
+// not one: it runs before there is a unit.
 var UnitRunKinds = []string{"define", "plan", "develop", "review", "merge", "release", "learn", "issue"}
+
+// RunKinds are every kind of run: triage, then a unit's.
+var RunKinds = append([]string{"triage"}, UnitRunKinds...)
 
 // Efforts are the CLI's effort levels.
 var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
@@ -21,27 +24,38 @@ var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 // so it cannot pass for a flag.
 var modelName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,99}$`)
 
-// RunOverride replaces the configured model or effort of one kind of run,
-// for one unit. An empty field keeps the configuration's.
+// RunOverride replaces the account, model or effort of one kind of run: for
+// one unit, one project, or every project. An empty field keeps what the
+// less specific settings say.
 type RunOverride struct {
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
+	Account string `json:"account,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Effort  string `json:"effort,omitempty"`
 }
 
 // RunOverrides are a unit's overrides, by kind of run.
 type RunOverrides map[string]RunOverride
 
-// Normalize trims the overrides and drops the empty ones. It rejects an
-// unknown kind of run, model or effort level.
-func (o RunOverrides) Normalize() (RunOverrides, error) {
+// Normalize trims a unit's overrides and drops the empty ones. It rejects an
+// unknown kind of run, account id, model or effort level.
+func (o RunOverrides) Normalize() (RunOverrides, error) { return o.normalize(UnitRunKinds) }
+
+func (o RunOverrides) normalize(kinds []string) (RunOverrides, error) {
 	out := RunOverrides{}
 	for _, kind := range slices.Sorted(maps.Keys(o)) {
-		v := RunOverride{Model: strings.TrimSpace(o[kind].Model), Effort: strings.ToLower(strings.TrimSpace(o[kind].Effort))}
+		v := RunOverride{
+			Account: strings.TrimSpace(o[kind].Account),
+			Model:   strings.TrimSpace(o[kind].Model),
+			Effort:  strings.ToLower(strings.TrimSpace(o[kind].Effort)),
+		}
 		if v == (RunOverride{}) {
 			continue
 		}
-		if !slices.Contains(UnitRunKinds, kind) {
-			return nil, fmt.Errorf("a unit has no %q run", kind)
+		if !slices.Contains(kinds, kind) {
+			return nil, fmt.Errorf("there is no %q run here", kind)
+		}
+		if v.Account != "" && !ValidAccountID(v.Account) {
+			return nil, fmt.Errorf("%s: %q is not an account id", kind, v.Account)
 		}
 		if v.Model != "" && !modelName.MatchString(v.Model) {
 			return nil, fmt.Errorf("%s: %q is not a model name", kind, v.Model)

@@ -173,18 +173,51 @@ func TestSweep(t *testing.T) {
 	}
 }
 
-func TestPauseHoldsBackClaudeJobs(t *testing.T) {
-	q, _ := newQueue(t, 1)
-	q.Register("claude", Kind{Handler: func(context.Context, db.Job) error { return nil }, Claude: true})
-	q.Register("git", Kind{Handler: func(context.Context, db.Job) error { return nil }})
+// A job waiting on a free account runs as soon as it is woken, before its
+// retry time; other requeued jobs keep theirs.
+func TestWakeWaiting(t *testing.T) {
+	q, st := newQueue(t, 1)
+	var calls atomic.Int32
+	q.Register("run", Kind{Handler: func(context.Context, db.Job) error {
+		if calls.Add(1) <= 2 {
+			return &RetryError{After: time.Hour, Wait: WaitAccount, Err: errors.New("every account is limited")}
+		}
+		return nil
+	}})
+	q.Register("other", Kind{Handler: func(context.Context, db.Job) error {
+		return &RetryError{After: time.Hour, Err: errors.New("later")}
+	}})
 	ctx := context.Background()
-	_, _ = q.Enqueue(ctx, EnqueueOpts{Kind: "claude"})
-	q.PauseClaude(time.Now().Add(time.Hour))
-	if _, ok := q.claim(ctx); ok {
-		t.Fatal("a Claude job was claimed while paused")
+	waiting, _ := q.Enqueue(ctx, EnqueueOpts{Kind: "run"})
+	other, _ := q.Enqueue(ctx, EnqueueOpts{Kind: "other"})
+	for range 2 {
+		j, ok := q.claim(ctx)
+		if !ok {
+			t.Fatal("claim failed")
+		}
+		q.execute(ctx, 0, j)
 	}
-	_, _ = q.Enqueue(ctx, EnqueueOpts{Kind: "git"})
-	if j, ok := q.claim(ctx); !ok || j.Kind != "git" {
-		t.Fatal("non-Claude jobs keep running while paused")
+	if j, _ := st.Q.GetJob(ctx, waiting.ID); j.Status != StatusQueued || j.WaitingOn != WaitAccount {
+		t.Fatalf("waiting job: %s, waiting on %q", j.Status, j.WaitingOn)
+	}
+	if _, ok := q.claim(ctx); ok {
+		t.Fatal("a job was claimed before its retry time")
+	}
+	if err := q.WakeWaiting(ctx, WaitAccount); err != nil {
+		t.Fatal(err)
+	}
+	j, ok := q.claim(ctx)
+	if !ok || j.ID != waiting.ID {
+		t.Fatalf("after waking, claimed %v (%v), want the waiting job", j.ID, ok)
+	}
+	q.execute(ctx, 0, j)
+	if j, _ := st.Q.GetJob(ctx, waiting.ID); j.WaitingOn != WaitAccount {
+		t.Errorf("a job still limited waits again: waiting on %q", j.WaitingOn)
+	}
+	if s := status(t, st, other.ID); s != StatusQueued {
+		t.Errorf("the other job is %s", s)
+	}
+	if _, ok := q.claim(ctx); ok {
+		t.Error("waking must not touch jobs that wait on nothing")
 	}
 }

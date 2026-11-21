@@ -88,7 +88,7 @@ func (p *Pipeline) define(ctx context.Context, job db.Job, u db.Unit) error {
 	if req.System, err = systemPrompt(nil); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func (p *Pipeline) plan(ctx context.Context, job db.Job, u db.Unit) error {
 	if req.System, err = systemPrompt(urs); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -282,7 +282,7 @@ func (p *Pipeline) develop(ctx context.Context, job db.Job, u db.Unit) error {
 	if req.System, err = systemPrompt(urs); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return err
 	}

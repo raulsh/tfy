@@ -1,5 +1,6 @@
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { accountNames, useAccounts } from "@/features/accounts/hooks";
 import type { Run } from "@/shared/api/types";
 import { Mono, TimeAgo } from "@/shared/components/misc";
 import { StatusTag } from "@/shared/components/StatusTag";
@@ -9,6 +10,7 @@ import { isRunLive, runStatusLabel, runTone, toneColor } from "@/shared/lib/stat
 
 // Runs as traces: one dense row per Claude session.
 export function RunsTable({ runs, loading, showUnit = true }: { runs: Run[]; loading?: boolean; showUnit?: boolean }) {
+	const names = accountNames(useAccounts().data);
 	const openRun = useOpenRun();
 	const columns: ColumnsType<Run> = [
 		{ title: "Run", dataIndex: "id", width: 96, render: (v: string) => <Mono faint>{shortId(v)}</Mono> },
@@ -42,6 +44,13 @@ export function RunsTable({ runs, loading, showUnit = true }: { runs: Run[]; loa
 			dataIndex: "status",
 			width: 140,
 			render: (v: string) => <StatusTag tone={runTone(v)} label={runStatusLabel(v)} pulse={isRunLive(v)} />,
+		},
+		{
+			title: "Account",
+			dataIndex: "account_id",
+			width: 130,
+			ellipsis: true,
+			render: (v: string) => <span className="muted">{names[v] ?? v}</span>,
 		},
 		{ title: "Model", dataIndex: "model", width: 90, render: (v: string) => <span className="muted">{v}</span> },
 		{

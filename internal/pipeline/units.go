@@ -98,6 +98,9 @@ func (p *Pipeline) newUnit(ctx context.Context, s unitSpec) (db.Unit, error) {
 		}
 		return db.Unit{}, err
 	}
+	if err := p.checkOverrides(ctx, s.ProjectID, overrides); err != nil {
+		return db.Unit{}, err
+	}
 	var u db.Unit
 	err = p.Store.Tx(ctx, func(q *db.Queries) error {
 		seq, err := q.NextUnitSeq(ctx)
@@ -419,6 +422,7 @@ func (p *Pipeline) Act(ctx context.Context, unitID, action string, in ActionInpu
 		kind := jobForState[state]
 		p.flag(ctx, u.ID, domain.AttentionNone, "")
 		p.activity(ctx, u.ID, actor, "retry", "retrying "+kind, nil)
+		p.resumeStageAccounts(ctx, u, kind)
 		return u, p.enqueue(ctx, kind, u, retryPayload(kind))
 
 	case ActionCancel:

@@ -67,14 +67,86 @@ export interface Unit {
 	actions: UnitAction[];
 }
 
-// Another model or effort level for one kind of a unit's runs, over the
-// configuration's. What is empty runs as configured.
+// Another account, model or effort level for one kind of run: a unit's, a
+// project's or every project's. What is empty comes from the less specific
+// settings, and in the end from the config file.
 export interface RunOverride {
+	account?: string;
 	model?: string;
 	effort?: string;
 }
 
 export type RunOverrides = Record<string, RunOverride>;
+
+// The accounts runs may use, in order of preference, and per kind of run an
+// account, model or effort.
+export interface RunSettings {
+	accounts: string[];
+	stages: RunOverrides;
+}
+
+export type AccountKind = "machine" | "token" | "api_key" | "bedrock";
+
+export interface AccountSettings {
+	region?: string;
+	aws_profile?: string;
+	// A model alias (opus, sonnet, haiku, fable) to the model the account runs.
+	models?: Record<string, string>;
+}
+
+export interface Quota {
+	status: string;
+	windows: Record<string, QuotaWindow>;
+	updated_at: string;
+}
+
+// A coding CLI and how it signs in. Its secret never leaves the server.
+export interface Account {
+	id: string;
+	name: string;
+	cli: string;
+	kind: AccountKind;
+	settings: AccountSettings;
+	has_secret: boolean;
+	paused_until: string | null;
+	pause_reason?: string;
+	// Models it cannot run for now, such as one its plan has no usage
+	// credits for, until when.
+	model_blocks: Record<string, string>;
+	quota: Quota | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AccountInput {
+	id?: string;
+	name: string;
+	cli?: string;
+	kind?: AccountKind;
+	settings: AccountSettings;
+	// Left out, the secret stays as it is.
+	secret?: string;
+}
+
+export interface AccountTest {
+	loggedIn: boolean;
+	authMethod?: string;
+	apiProvider?: string;
+	subscriptionType?: string;
+	email?: string;
+	orgName?: string;
+	error?: string;
+	probe?: { status: string; model?: string; reply?: string; reason?: string; cost_usd: number };
+}
+
+// What a coding CLI can do in tfy.
+export interface Engine {
+	name: string;
+	kinds: AccountKind[];
+	stages: string[];
+	efforts: string[];
+	models: string[];
+}
 
 export interface UnitRepo {
 	repo_id: string;
@@ -248,6 +320,8 @@ export interface Run {
 	status: RunStatus;
 	reason: string;
 	session_id: string;
+	account_id: string;
+	engine: string;
 	model: string;
 	effort: string;
 	permission_mode: string;
@@ -287,6 +361,7 @@ export interface ProjectSettings {
 	branch_template: string;
 	learn_from_units: boolean;
 	suggest_issue_updates: boolean;
+	runs: RunSettings;
 }
 
 export interface Repo {
@@ -332,10 +407,9 @@ export interface Stats {
 	live_runs: number;
 	cost_today_usd: number;
 	cost_7d_usd: number;
-	paused_until: string | null;
 	feedback_by_status: Partial<Record<FeedbackStatus, number>>;
 	slack_enabled: boolean;
-	quota: { status: string; windows: Record<string, QuotaWindow>; updated_at: string } | null;
+	accounts: Account[];
 }
 
 export interface Check {

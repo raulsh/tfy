@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,14 +46,17 @@ type Kind struct {
 	Handler Handler
 	// SideEffects marks jobs that are unsafe to repeat blindly.
 	SideEffects bool
-	// Claude marks jobs that spend the Claude quota; they are held back while
-	// the account is rate limited.
-	Claude bool
 }
 
-// RetryError asks for the job to be re-queued after a delay.
+// WaitAccount is what a job waits on when every account it may run on is at
+// its usage limit.
+const WaitAccount = "account"
+
+// RetryError asks for the job to be re-queued after a delay. Wait names what
+// it waits on, if anything; WakeWaiting runs it early.
 type RetryError struct {
 	After time.Duration
+	Wait  string
 	Err   error
 }
 
@@ -73,12 +78,11 @@ type Queue struct {
 
 	wake chan struct{}
 
-	mu          sync.Mutex
-	claimMu     sync.Mutex
-	pausedUntil time.Time
-	running     map[string]context.CancelFunc // job id → cancel
-	unitJob     map[string]string             // unit id → running job id
-	cancelled   map[string]bool               // job ids cancelled on purpose
+	mu        sync.Mutex
+	claimMu   sync.Mutex
+	running   map[string]context.CancelFunc // job id → cancel
+	unitJob   map[string]string             // unit id → running job id
+	cancelled map[string]bool               // job ids cancelled on purpose
 }
 
 // New creates a queue.
@@ -174,23 +178,13 @@ func (q *Queue) Wake() {
 	}
 }
 
-// PauseClaude holds back Claude jobs until t.
-func (q *Queue) PauseClaude(t time.Time) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if t.After(q.pausedUntil) {
-		q.pausedUntil = t
+// WakeWaiting runs now the queued jobs waiting on w.
+func (q *Queue) WakeWaiting(ctx context.Context, w string) error {
+	if err := q.st.Q.WakeWaitingJobs(ctx, db.WakeWaitingJobsParams{Now: store.Now(), WaitingOn: w}); err != nil {
+		return err
 	}
-}
-
-// PausedUntil reports when Claude jobs resume; zero if they are not paused.
-func (q *Queue) PausedUntil() time.Time {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if time.Now().After(q.pausedUntil) {
-		return time.Time{}
-	}
-	return q.pausedUntil
+	q.Wake()
+	return nil
 }
 
 // CancelUnit cancels the job running for a unit, if any, and drops its
@@ -270,14 +264,7 @@ func (q *Queue) work(ctx context.Context, worker int) {
 func (q *Queue) claim(ctx context.Context) (db.Job, bool) {
 	q.claimMu.Lock()
 	defer q.claimMu.Unlock()
-	paused := !q.PausedUntil().IsZero()
-	kinds := make([]string, 0, len(q.kinds))
-	for name, k := range q.kinds {
-		if paused && k.Claude {
-			continue
-		}
-		kinds = append(kinds, name)
-	}
+	kinds := slices.Collect(maps.Keys(q.kinds))
 	if len(kinds) == 0 {
 		return db.Job{}, false
 	}
@@ -327,7 +314,7 @@ func (q *Queue) execute(parent context.Context, worker int, job db.Job) {
 		log.Info("job stopped by shutdown")
 		return
 	case errors.As(err, &retry):
-		if rerr := q.st.Q.RequeueJob(bg, db.RequeueJobParams{RunAfter: store.Now().Add(retry.After), Error: retry.Error(), ID: job.ID}); rerr != nil {
+		if rerr := q.st.Q.RequeueJob(bg, db.RequeueJobParams{RunAfter: store.Now().Add(retry.After), Error: retry.Error(), WaitingOn: retry.Wait, ID: job.ID}); rerr != nil {
 			log.Error("requeue job", "error", rerr)
 		}
 		log.Info("job requeued", "after", retry.After, "error", retry.Err)

@@ -3,9 +3,13 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/raulsh/tfy/internal/domain"
 )
 
 // passthroughEnv lists the variables a run inherits: what common toolchains
@@ -15,7 +19,7 @@ import (
 var passthroughEnv = []string{
 	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR",
 	"XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
-	// Claude Code's configuration.
+	// Claude Code's configuration, which every account shares.
 	"CLAUDE_CONFIG_DIR",
 	// Toolchains.
 	"GOPATH", "GOROOT", "GOPROXY", "GOPRIVATE", "GONOSUMDB", "GOFLAGS", "GOMODCACHE", "GOCACHE", "GOTOOLCHAIN",
@@ -49,8 +53,8 @@ var providerEnv = []string{
 }
 
 // credentialEnv lists what signs the CLI in: Anthropic's credentials, then
-// the provider's. The CLI inherits them; the agent's commands start without
-// them (ShellEnv).
+// the provider's. The CLI gets them from the run's account; the agent's
+// commands start without them (ShellEnv).
 var credentialEnv = append([]string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}, providerEnv...)
 
 // EnvOptions shapes the environment of a run.
@@ -63,6 +67,11 @@ type EnvOptions struct {
 	// ShellEnvFile holds ShellEnv, which the CLI runs ahead of each of the
 	// agent's shell commands (CLAUDE_ENV_FILE).
 	ShellEnvFile string
+	// Account signs the CLI in, with its Secret. Without one, or with this
+	// machine's, the run inherits tfy's credentials and those in the
+	// user's Claude Code settings.
+	Account *domain.Account
+	Secret  string
 	// Extra entries, "KEY=value", appended last.
 	Extra []string
 }
@@ -76,14 +85,18 @@ func BuildEnv(opts EnvOptions) []string {
 			env = append(env, k+"="+v)
 		}
 	}
-	for _, k := range credentialEnv {
-		if v, ok := os.LookupEnv(k); ok {
-			env = append(env, k+"="+v)
+	if a := opts.Account; a == nil || a.Kind == domain.AccountMachine {
+		for _, k := range credentialEnv {
+			if v, ok := os.LookupEnv(k); ok {
+				env = append(env, k+"="+v)
+			}
 		}
+		// Runs don't load the user's settings, yet that is where the CLI keeps
+		// a provider chosen with it. Its values win, as in the user's sessions.
+		env = append(env, userCredentialEnv()...)
+	} else {
+		env = append(env, accountEnv(*a, opts.Secret)...)
 	}
-	// Runs don't load the user's settings, yet that is where the CLI keeps a
-	// provider chosen with it. Its values win, as in the user's sessions.
-	env = append(env, userCredentialEnv()...)
 	if opts.ShellEnvFile != "" {
 		env = append(env, "CLAUDE_ENV_FILE="+opts.ShellEnvFile)
 	}
@@ -110,6 +123,30 @@ func BuildEnv(opts EnvOptions) []string {
 	}
 	env = append(env, opts.Extra...)
 	return dedupeEnv(env)
+}
+
+// accountEnv signs the CLI in to an account other than this machine's: what
+// it sets and nothing inherited, so neither another account's credentials
+// nor the user's provider can take over.
+func accountEnv(a domain.Account, secret string) []string {
+	var env []string
+	switch a.Kind {
+	case domain.AccountToken:
+		env = append(env, "CLAUDE_CODE_OAUTH_TOKEN="+secret)
+	case domain.AccountAPIKey:
+		env = append(env, "ANTHROPIC_API_KEY="+secret)
+	case domain.AccountBedrock:
+		env = append(env, "CLAUDE_CODE_USE_BEDROCK=1", "AWS_REGION="+a.Settings.Region)
+		if a.Settings.AWSProfile != "" {
+			env = append(env, "AWS_PROFILE="+a.Settings.AWSProfile)
+		} else {
+			env = append(env, "AWS_BEARER_TOKEN_BEDROCK="+secret)
+		}
+	}
+	for _, alias := range slices.Sorted(maps.Keys(a.Settings.Models)) {
+		env = append(env, "ANTHROPIC_DEFAULT_"+strings.ToUpper(alias)+"_MODEL="+a.Settings.Models[alias])
+	}
+	return env
 }
 
 // userCredentialEnv returns the credentialEnv entries of the env in Claude
@@ -169,4 +206,36 @@ func dedupeEnv(env []string) []string {
 		out = append(out, kv)
 	}
 	return out
+}
+
+// Provider is the API provider an account's runs reach: "bedrock", "vertex",
+// "foundry" or "anthropic". This machine's account reaches the one tfy's
+// environment, then the user's Claude Code settings, choose.
+func Provider(a *domain.Account) string {
+	switch {
+	case a == nil:
+		return ""
+	case a.Kind == domain.AccountBedrock:
+		return "bedrock"
+	case a.Kind != domain.AccountMachine:
+		return "anthropic"
+	}
+	env := map[string]string{}
+	for _, k := range credentialEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			env[k] = v
+		}
+	}
+	for _, kv := range userCredentialEnv() {
+		k, v, _ := strings.Cut(kv, "=")
+		env[k] = v
+	}
+	for _, p := range []string{"bedrock", "vertex", "foundry"} {
+		switch strings.ToLower(strings.TrimSpace(env["CLAUDE_CODE_USE_"+strings.ToUpper(p)])) {
+		case "", "0", "false", "no":
+		default:
+			return p
+		}
+	}
+	return "anthropic"
 }

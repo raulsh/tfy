@@ -545,17 +545,12 @@ func (p *Pipeline) issueCheck(ctx context.Context, job db.Job) error {
 	if req.Prompt, req.PromptVersion, err = prompts.Render("issue", data); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return fail(err.Error())
 	}
 	if out.Status == claude.StatusRateLimited {
-		until := time.Now().Add(15 * time.Minute)
-		if rl := out.RateLimit; rl != nil && rl.ResetsAt > 0 {
-			until = time.Unix(rl.ResetsAt, 0)
-		}
-		p.Jobs.PauseClaude(until)
-		return &jobs.RetryError{After: time.Until(until) + time.Minute, Err: errors.New("rate limited")}
+		return p.waitOnLimit(ctx, db.Unit{}, out)
 	}
 	if out.Status != claude.StatusSucceeded {
 		return fail(fmt.Sprintf("the run %s: %s", strings.ReplaceAll(string(out.Status), "_", " "), out.Reason))

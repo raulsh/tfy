@@ -45,6 +45,7 @@ func newRoot() *cobra.Command {
 		newServeCmd(),
 		newInitCmd(),
 		newDoctorCmd(),
+		newAccountCmd(),
 		newHookGuardCmd(),
 		newHookStopCmd(),
 		newDevCmd(),

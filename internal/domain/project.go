@@ -25,6 +25,9 @@ type ProjectSettings struct {
 	// requirement is marked ready, and suggests how they could say more.
 	// Nothing is written to GitHub until a person applies a suggestion.
 	SuggestIssueUpdates bool `json:"suggest_issue_updates"`
+	// Runs choose the project's accounts, in order of preference, and per
+	// kind of run an account, model or effort. Empty uses the global ones.
+	Runs RunSettings `json:"runs"`
 }
 
 // DefaultProjectSettings are applied to new projects.
@@ -58,6 +61,7 @@ func ParseProjectSettings(raw string) ProjectSettings {
 	if !ValidBranchTemplate(s.BranchTemplate) {
 		s.BranchTemplate = DefaultBranchTemplate
 	}
+	s.Runs = s.Runs.lenient()
 	return s
 }
 

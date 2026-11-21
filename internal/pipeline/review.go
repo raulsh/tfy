@@ -174,7 +174,7 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 	if req.System, err = systemPrompt(urs); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return err
 	}

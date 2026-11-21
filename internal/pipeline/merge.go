@@ -201,7 +201,7 @@ func (p *Pipeline) decideMerge(ctx context.Context, u db.Unit, urs []db.ListUnit
 	if req.System, err = systemPrompt(urs); err != nil {
 		return u, nil, err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return u, nil, err
 	}

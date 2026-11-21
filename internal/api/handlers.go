@@ -49,6 +49,7 @@ func (s *Server) routes(r fiber.Router) {
 	r.Post("/runs/:id/cancel", s.cancelRun)
 
 	r.Get("/events", s.globalStream())
+	s.accountRoutes(r)
 	s.intakeRoutes(r)
 	s.issueRoutes(r)
 	s.artifactRoutes(r)
@@ -138,12 +139,12 @@ func (s *Server) stats(c fiber.Ctx) error {
 		"live_runs":          len(live),
 		"cost_today_usd":     costToday,
 		"cost_7d_usd":        cost7d,
-		"paused_until":       nil,
-		"quota":              s.Pipeline.Quota(),
 	}
-	if t := s.Jobs.PausedUntil(); !t.IsZero() {
-		out["paused_until"] = t
+	accounts, err := s.accountViews(c)
+	if err != nil {
+		return err
 	}
+	out["accounts"] = accounts
 	return ok(c, out)
 }
 
@@ -486,7 +487,7 @@ func runRowView(r db.ListRunsRow) RunView {
 		Reason: r.Reason, SessionID: r.SessionID, Model: r.Model, Effort: r.Effort, PermissionMode: r.PermissionMode,
 		PromptVersion: r.PromptVersion, Cwd: r.Cwd, Pid: r.Pid, CostUsd: r.CostUsd, CostTotalUsd: r.CostTotalUsd,
 		InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, Turns: r.Turns, Denials: r.Denials, Result: r.Result,
-		CreatedAt: r.CreatedAt, StartedAt: r.StartedAt, EndedAt: r.EndedAt,
+		CreatedAt: r.CreatedAt, StartedAt: r.StartedAt, EndedAt: r.EndedAt, AccountID: r.AccountID, Engine: r.Engine,
 	})
 	if r.UnitSeq > 0 {
 		v.UnitLabel = domain.Label(r.UnitSeq)

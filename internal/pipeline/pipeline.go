@@ -11,8 +11,6 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/raulsh/tfy/internal/claude"
 	"github.com/raulsh/tfy/internal/config"
@@ -74,34 +72,23 @@ type Deps struct {
 type Pipeline struct {
 	Deps
 	repoLocks sync.Map // full name → *sync.Mutex
-	quota     atomic.Pointer[Quota]
 	board     agentBoard
 }
-
-// Quota is the latest account utilization the CLI reported.
-type Quota struct {
-	Status    string                            `json:"status"`
-	Windows   map[string]claude.RateLimitWindow `json:"windows"`
-	UpdatedAt time.Time                         `json:"updated_at"`
-}
-
-// Quota returns the latest reported utilization, or nil before any run.
-func (p *Pipeline) Quota() *Quota { return p.quota.Load() }
 
 // New creates the pipeline and registers its job kinds with the queue.
 func New(d Deps) *Pipeline {
 	p := &Pipeline{Deps: d}
-	d.Jobs.Register(JobDefine, jobs.Kind{Handler: p.unitJob(p.define), Claude: true})
-	d.Jobs.Register(JobPlan, jobs.Kind{Handler: p.unitJob(p.plan), Claude: true})
-	d.Jobs.Register(JobDevelop, jobs.Kind{Handler: p.unitJob(p.develop), Claude: true, SideEffects: true})
+	d.Jobs.Register(JobDefine, jobs.Kind{Handler: p.unitJob(p.define)})
+	d.Jobs.Register(JobPlan, jobs.Kind{Handler: p.unitJob(p.plan)})
+	d.Jobs.Register(JobDevelop, jobs.Kind{Handler: p.unitJob(p.develop), SideEffects: true})
 	d.Jobs.Register(JobPublish, jobs.Kind{Handler: p.unitJob(p.publish), SideEffects: true})
-	d.Jobs.Register(JobReview, jobs.Kind{Handler: p.unitJob(p.review), Claude: true})
-	d.Jobs.Register(JobMerge, jobs.Kind{Handler: p.unitJob(p.merge), Claude: true, SideEffects: true})
+	d.Jobs.Register(JobReview, jobs.Kind{Handler: p.unitJob(p.review)})
+	d.Jobs.Register(JobMerge, jobs.Kind{Handler: p.unitJob(p.merge), SideEffects: true})
 	d.Jobs.Register(JobCleanup, jobs.Kind{Handler: p.unitJob(p.cleanup), SideEffects: true})
-	d.Jobs.Register(JobTriage, jobs.Kind{Handler: p.triage, Claude: true})
-	d.Jobs.Register(JobRelease, jobs.Kind{Handler: p.unitJob(p.release), Claude: true})
-	d.Jobs.Register(JobLearn, jobs.Kind{Handler: p.unitJob(p.learn), Claude: true})
-	d.Jobs.Register(JobIssueCheck, jobs.Kind{Handler: p.issueCheck, Claude: true})
+	d.Jobs.Register(JobTriage, jobs.Kind{Handler: p.triage})
+	d.Jobs.Register(JobRelease, jobs.Kind{Handler: p.unitJob(p.release)})
+	d.Jobs.Register(JobLearn, jobs.Kind{Handler: p.unitJob(p.learn)})
+	d.Jobs.Register(JobIssueCheck, jobs.Kind{Handler: p.issueCheck})
 	d.Jobs.OnInterrupted = func(ctx context.Context, j db.Job) {
 		if j.UnitID.Valid {
 			p.flag(ctx, j.UnitID.String, domain.AttentionInterrupted,

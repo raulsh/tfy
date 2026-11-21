@@ -1,11 +1,12 @@
-import { Button, Progress, Segmented, Spin, Table } from "antd";
+import { Button, Segmented, Spin } from "antd";
 import { CircleAlert, CircleCheck, CircleX, RefreshCw } from "lucide-react";
 import { useThemeMode } from "@/app/theme/ThemeMode";
-import { useConfig, useDoctor, useStats } from "@/shared/api/system";
-import type { Check, StageConfig } from "@/shared/api/types";
+import { AccountsCard } from "@/features/accounts/components/AccountsCard";
+import { RunSettingsCard } from "@/features/accounts/components/RunSettingsCard";
+import { useConfig, useDoctor } from "@/shared/api/system";
+import type { Check } from "@/shared/api/types";
 import { KVTable, Mono, PageHeader } from "@/shared/components/misc";
 import { Card } from "@/shared/components/OverlayDrawer";
-import { absTime, usd } from "@/shared/lib/format";
 import { toneColor } from "@/shared/lib/status";
 
 const checkIcon = {
@@ -18,7 +19,6 @@ export default function SettingsPage() {
 	const { preference, setPreference } = useThemeMode();
 	const config = useConfig();
 	const doctor = useDoctor();
-	const { data: stats } = useStats();
 
 	return (
 		<div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -82,33 +82,7 @@ export default function SettingsPage() {
 								))
 							)}
 						</Card>
-						<Card title="Claude usage">
-							{stats?.quota ? (
-								<div style={{ display: "grid", gap: 12 }}>
-									{Object.entries(stats.quota.windows ?? {}).map(([name, w]) => (
-										<div key={name}>
-											<div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-												<span>{name.replace("_", " ")} window</span>
-												<span className="muted">resets {absTime(new Date(w.resetsAt * 1000).toISOString())}</span>
-											</div>
-											<Progress
-												percent={Math.round(w.utilization * 100)}
-												size="small"
-												strokeColor={
-													w.utilization > 0.8 ? toneColor.error : w.utilization > 0.5 ? toneColor.warn : toneColor.ok
-												}
-											/>
-										</div>
-									))}
-									<div className="faint" style={{ fontSize: 12 }}>
-										As reported by the last run. Spend today {usd(stats.cost_today_usd)}, last 7 days{" "}
-										{usd(stats.cost_7d_usd)}.
-									</div>
-								</div>
-							) : (
-								<span className="muted">Shown after the first Claude run.</span>
-							)}
-						</Card>
+						<AccountsCard />
 					</div>
 					<div>
 						<Card title="Configuration" padded={false}>
@@ -125,45 +99,7 @@ export default function SettingsPage() {
 								/>
 							)}
 						</Card>
-						<Card title="Run stages" padded={false}>
-							{config.data && (
-								<Table<{ kind: string } & StageConfig>
-									className="tf-table"
-									size="small"
-									rowKey="kind"
-									pagination={false}
-									dataSource={[
-										"triage",
-										"define",
-										"plan",
-										"develop",
-										"review",
-										"merge",
-										"release",
-										"learn",
-										"issue",
-									].map((k) => ({
-										kind: k,
-										...config.data.stages[k],
-									}))}
-									onRow={() => ({ style: { cursor: "default" } })}
-									columns={[
-										{
-											title: "Stage",
-											dataIndex: "kind",
-											render: (v: string) => <span style={{ fontWeight: 500 }}>{v}</span>,
-										},
-										{ title: "Model", dataIndex: "model", render: (v: string) => <Mono>{v}</Mono> },
-										{ title: "Effort", dataIndex: "effort" },
-										{ title: "Budget", dataIndex: "budget_usd", render: (v: number) => usd(v) },
-										{ title: "Timeout", dataIndex: "timeout", render: (v: string) => <Mono faint>{v}</Mono> },
-									]}
-								/>
-							)}
-							<div className="faint" style={{ fontSize: 12, padding: "10px 16px" }}>
-								Edit the config file to change these; restart tfy to apply.
-							</div>
-						</Card>
+						<RunSettingsCard config={config.data} />
 					</div>
 				</div>
 			</div>

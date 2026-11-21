@@ -125,6 +125,8 @@ type RunView struct {
 	Status         string          `json:"status"`
 	Reason         string          `json:"reason"`
 	SessionID      string          `json:"session_id"`
+	AccountID      string          `json:"account_id"`
+	Engine         string          `json:"engine"`
 	Model          string          `json:"model"`
 	Effort         string          `json:"effort"`
 	PermissionMode string          `json:"permission_mode"`
@@ -146,7 +148,7 @@ type RunView struct {
 func runView(r db.Run) RunView {
 	v := RunView{
 		ID: r.ID, UnitID: r.UnitID.String, ProjectID: r.ProjectID.String, ParentRunID: r.ParentRunID, Kind: r.Kind,
-		Status: r.Status, Reason: r.Reason, SessionID: r.SessionID, Model: r.Model, Effort: r.Effort,
+		Status: r.Status, Reason: r.Reason, SessionID: r.SessionID, AccountID: r.AccountID, Engine: r.Engine, Model: r.Model, Effort: r.Effort,
 		PermissionMode: r.PermissionMode, PromptVersion: r.PromptVersion, Cwd: r.Cwd, CostUSD: r.CostUsd,
 		CostTotalUSD: r.CostTotalUsd, InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, Turns: r.Turns,
 		Denials: r.Denials, Result: resultJSON(r.Result), CreatedAt: r.CreatedAt,

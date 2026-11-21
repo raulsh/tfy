@@ -227,7 +227,12 @@ export default function UnitPage() {
 									["Runs", `${unit.runs.length} (${usd(spend)})`],
 									["Sub-agents", <SubagentsSwitch key="s" unit={unit} />],
 									...(Object.keys(unit.run_overrides ?? {}).length > 0
-										? [["Models", <RunOverridesList key="m" overrides={unit.run_overrides} />] as [string, ReactNode]]
+										? [
+												["Accounts and models", <RunOverridesList key="m" overrides={unit.run_overrides} />] as [
+													string,
+													ReactNode,
+												],
+											]
 										: []),
 									[
 										"Workspace",

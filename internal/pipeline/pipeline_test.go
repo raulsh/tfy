@@ -143,6 +143,36 @@ func fakeClaude() int {
 		}
 		_ = os.WriteFile(filepath.Join(dir, "prompt-"+kind+".txt"), prompt, 0o644)
 		_ = os.WriteFile(filepath.Join(dir, "args-"+kind+".json"), must(json.Marshal(args)), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "env-"+kind+".json"), must(json.Marshal(os.Environ())), 0o644)
+
+		// $FAKE_CONTROL/credits-required-<token> names a model the token's
+		// plan has no usage credits for: every run of it is refused.
+		token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")
+		if b, err := os.ReadFile(filepath.Join(dir, "credits-required-"+token)); err == nil && strings.TrimSpace(string(b)) == flagValue(args, "--model") {
+			emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": map[string]any{
+				"status": "rejected", "errorCode": "credits_required", "resetsAt": time.Now().Add(30 * 24 * time.Hour).Unix()}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "num_turns": 1, "total_cost_usd": 0,
+				"session_id": sid, "result": "Fable 5.1 requires usage credits. Switch to another model.", "api_error_status": 429})
+			return 0
+		}
+		// $FAKE_CONTROL/rate-limited, or rate-limited-<token> for one
+		// subscription token's runs: this run finds its account limited,
+		// once. Holding "worked", it gets some work done first.
+		for _, name := range []string{"rate-limited", "rate-limited-" + token} {
+			b, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil || os.Remove(filepath.Join(dir, name)) != nil {
+				continue
+			}
+			cost := 0.0
+			if strings.TrimSpace(string(b)) == "worked" {
+				cost = 0.02
+			}
+			emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": map[string]any{
+				"status": "rejected", "rateLimitType": "five_hour", "resetsAt": time.Now().Add(time.Hour).Unix()}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "num_turns": 1, "total_cost_usd": cost,
+				"session_id": sid, "result": "You've hit your session limit", "api_error_status": 429})
+			return 0
+		}
 	}
 
 	var out any
@@ -225,6 +255,8 @@ func fakeClaude() int {
 			repos = []any{}
 		}
 		out = map[string]any{"summary": "done", "repos": repos}
+	case strings.Contains(string(prompt), "Reply with the single word ok."):
+		// An account test.
 	default:
 		if !strings.Contains(string(prompt), "Write the release notes") {
 			fmt.Fprintln(os.Stderr, "fake claude: unknown run")
@@ -232,7 +264,7 @@ func fakeClaude() int {
 		}
 	}
 	resultText := "ok"
-	if out == nil {
+	if out == nil && !strings.Contains(string(prompt), "Reply with the single word ok.") {
 		resultText = "## What's new\n\nThe status page now tells the truth when the database is down."
 	}
 	cost := 0.01
@@ -1607,5 +1639,64 @@ func TestSubagentsFollowTheUnit(t *testing.T) {
 	h.waitState(u2.ID, domain.StateDefinitionReview)
 	if got := tools("define"); slices.Contains(got, claude.AgentTool) {
 		t.Errorf("define ran with tools %v, want no Agent tool", got)
+	}
+}
+
+// A run that finds the account limited holds Claude work back until the limit
+// resets. A person who cancels and retries runs it now: they may have
+// switched the CLI to a provider such as Bedrock in its settings meanwhile.
+// The retried run gets that provider, and the agent's commands don't.
+func TestRetryAfterARateLimitRunsNow(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	pr := h.project()
+	if err := os.MkdirAll(h.control, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.control, "rate-limited"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("the limited define run to be queued again", func() bool {
+		var status string
+		_ = h.st.DB.QueryRow(`SELECT status FROM jobs WHERE unit_id = ? ORDER BY created_at DESC LIMIT 1`, u.ID).Scan(&status)
+		u, _ = h.st.Q.GetUnit(ctx, u.ID)
+		return status == "queued" && u.Attention == string(domain.AttentionWaiting)
+	})
+	if a, err := h.st.Q.GetAccount(ctx, "machine"); err != nil || !a.PausedUntil.Valid || !a.PausedUntil.Time.After(time.Now()) {
+		t.Fatalf("a rate-limited run must pause its account: %+v (%v)", a.PausedUntil, err)
+	}
+
+	settings := `{"env": {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "bedrock", "GH_TOKEN": "secret"}}`
+	if err := os.WriteFile(filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json"), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{ActionCancel, ActionRetry} {
+		if _, err := h.p.Act(ctx, u.ID, action, ActionInput{}); err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+	}
+	h.waitState(u.ID, domain.StateDefinitionReview)
+
+	var env []string
+	if err := json.Unmarshal([]byte(h.read(filepath.Join(h.control, "env-define.json"))), &env); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"CLAUDE_CODE_USE_BEDROCK=1", "AWS_PROFILE=bedrock"} {
+		if !slices.Contains(env, want) {
+			t.Errorf("the retried run lacks %s", want)
+		}
+	}
+	if slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "GH_TOKEN=") }) {
+		t.Error("GH_TOKEN reached the run")
+	}
+	// The CLI runs this file in the shell of each of the agent's commands.
+	cmd := exec.Command("sh", "-c", `. "$CLAUDE_ENV_FILE" && echo "${CLAUDE_CODE_USE_BEDROCK-none} ${AWS_PROFILE-none}"`)
+	cmd.Env = env
+	if out, err := cmd.Output(); err != nil || strings.TrimSpace(string(out)) != "none none" {
+		t.Errorf("the agent's commands see the provider: %q (%v)", out, err)
 	}
 }

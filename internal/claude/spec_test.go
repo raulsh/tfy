@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/raulsh/tfy/internal/domain"
 )
 
 func TestDevelopArgs(t *testing.T) {
@@ -168,6 +170,53 @@ func TestBuildEnvGivesTheProviderToTheCLIAlone(t *testing.T) {
 	}
 	if !strings.Contains(seen, "\nHOME=") {
 		t.Errorf("the agent's commands lost the rest of the environment:%s", seen)
+	}
+}
+
+// An account other than this machine's signs the CLI in with exactly its own
+// credentials: none inherited from tfy or from the user's Claude Code
+// settings, which could sign it in elsewhere.
+func TestBuildEnvForAnAccount(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"env": {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "admin"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "inherited")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "inherited")
+	t.Setenv("AWS_REGION", "eu-west-1")
+	models := map[string]string{"fable": "us.anthropic.claude-opus-5-5"}
+	cases := []struct {
+		account domain.Account
+		secret  string
+		want    []string
+	}{
+		{domain.Account{Kind: domain.AccountToken, Settings: domain.AccountSettings{Models: models}}, "tok", []string{"CLAUDE_CODE_OAUTH_TOKEN=tok", "ANTHROPIC_DEFAULT_FABLE_MODEL=us.anthropic.claude-opus-5-5"}},
+		{domain.Account{Kind: domain.AccountAPIKey}, "key", []string{"ANTHROPIC_API_KEY=key"}},
+		{domain.Account{Kind: domain.AccountBedrock, Settings: domain.AccountSettings{Region: "us-east-1", AWSProfile: "bedrock"}}, "", []string{"CLAUDE_CODE_USE_BEDROCK=1", "AWS_REGION=us-east-1", "AWS_PROFILE=bedrock"}},
+		{domain.Account{Kind: domain.AccountBedrock, Settings: domain.AccountSettings{Region: "us-east-1"}}, "bk", []string{"CLAUDE_CODE_USE_BEDROCK=1", "AWS_REGION=us-east-1", "AWS_BEARER_TOKEN_BEDROCK=bk"}},
+	}
+	for _, c := range cases {
+		env := BuildEnv(EnvOptions{Account: &c.account, Secret: c.secret})
+		var got []string
+		for _, kv := range env {
+			if k, _, _ := strings.Cut(kv, "="); slices.Contains(credentialEnv, k) {
+				got = append(got, kv)
+			}
+		}
+		slices.Sort(got)
+		want := slices.Sorted(slices.Values(c.want))
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: credentials %v, want %v", c.account.Kind, got, want)
+		}
+	}
+	// This machine's account keeps what tfy and the user's settings give it.
+	machine := domain.Account{Kind: domain.AccountMachine}
+	env := BuildEnv(EnvOptions{Account: &machine})
+	for _, want := range []string{"ANTHROPIC_API_KEY=inherited", "CLAUDE_CODE_USE_BEDROCK=1", "AWS_PROFILE=admin"} {
+		if !slices.Contains(env, want) {
+			t.Errorf("this machine's account lacks %s", want)
+		}
 	}
 }
 

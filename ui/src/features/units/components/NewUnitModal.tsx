@@ -107,7 +107,7 @@ export function NewUnitModal({
 						placeholder="What is wrong or missing, who is affected, anything Claude should know."
 					/>
 				</Form.Item>
-				<RunOverridesField />
+				<RunOverridesField projectId={projectIdValue} />
 			</Form>
 		</Modal>
 	);

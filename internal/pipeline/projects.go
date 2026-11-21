@@ -32,6 +32,11 @@ func (p *Pipeline) CreateProject(ctx context.Context, in ProjectInput) (db.Proje
 	}
 	settings := domain.DefaultProjectSettings()
 	if in.Settings != nil {
+		runs, err := p.checkRunSettings(ctx, in.Settings.Runs, p.GlobalRunSettings(ctx).Accounts)
+		if err != nil {
+			return db.Project{}, err
+		}
+		in.Settings.Runs = runs
 		settings = domain.ParseProjectSettings(in.Settings.JSON())
 	}
 	conventions := ""
@@ -66,6 +71,11 @@ func (p *Pipeline) UpdateProject(ctx context.Context, id string, in ProjectInput
 	}
 	settings := domain.ParseProjectSettings(cur.Settings)
 	if in.Settings != nil {
+		runs, err := p.checkRunSettings(ctx, in.Settings.Runs, p.GlobalRunSettings(ctx).Accounts)
+		if err != nil {
+			return cur, err
+		}
+		in.Settings.Runs = runs
 		settings = domain.ParseProjectSettings(in.Settings.JSON())
 	}
 	conventions := cur.Conventions
@@ -78,6 +88,8 @@ func (p *Pipeline) UpdateProject(ctx context.Context, id string, in ProjectInput
 	})
 	if err == nil {
 		p.changed("project", pr.ID)
+		// The project's accounts may have changed: one may be free.
+		p.accountsChanged(ctx, "")
 	}
 	return pr, err
 }

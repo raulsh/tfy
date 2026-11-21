@@ -39,6 +39,11 @@ export function useLiveUpdates(): LiveState {
 						qc.invalidateQueries({ queryKey: ["projects"] });
 						qc.invalidateQueries({ queryKey: ["project", id] });
 						break;
+					case "account":
+						qc.invalidateQueries({ queryKey: ["accounts"] });
+						qc.invalidateQueries({ queryKey: ["run-settings"] });
+						qc.invalidateQueries({ queryKey: ["stats"] });
+						break;
 					default:
 						qc.invalidateQueries();
 				}

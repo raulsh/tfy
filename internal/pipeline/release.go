@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/raulsh/tfy/internal/claude"
 	"github.com/raulsh/tfy/internal/domain"
 	"github.com/raulsh/tfy/internal/gh"
 	"github.com/raulsh/tfy/internal/jobs"
@@ -169,9 +170,12 @@ func (p *Pipeline) writeReleaseNotes(ctx context.Context, u db.Unit, merged []db
 	if req.Prompt, req.PromptVersion, err = prompts.Render("release", data); err != nil {
 		return err
 	}
-	run, out, err := p.runClaude(ctx, req)
+	run, out, err := p.runAgent(ctx, req)
 	if err != nil {
 		return err
+	}
+	if out.Status == claude.StatusRateLimited {
+		return p.waitOnLimit(ctx, db.Unit{}, out)
 	}
 	if out.Status != "succeeded" || strings.TrimSpace(run.Result) == "" {
 		return fmt.Errorf("release notes run %s: %s", out.Status, out.Reason)

@@ -1,6 +1,6 @@
 -- name: CreateRun :one
-INSERT INTO runs (id, unit_id, project_id, parent_run_id, kind, status, model, effort, permission_mode, prompt_version, cwd, created_at)
-VALUES (@id, @unit_id, @project_id, @parent_run_id, @kind, 'queued', @model, @effort, @permission_mode, @prompt_version, @cwd, @now)
+INSERT INTO runs (id, unit_id, project_id, parent_run_id, kind, status, account_id, engine, model, effort, permission_mode, prompt_version, cwd, created_at)
+VALUES (@id, @unit_id, @project_id, @parent_run_id, @kind, 'queued', @account_id, @engine, @model, @effort, @permission_mode, @prompt_version, @cwd, @now)
 RETURNING *;
 
 -- name: GetRun :one

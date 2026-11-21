@@ -20,7 +20,11 @@ SELECT * FROM jobs WHERE id = @id;
 SELECT * FROM jobs WHERE status = 'running';
 
 -- name: RequeueJob :exec
-UPDATE jobs SET status = 'queued', run_after = @run_after, error = @error WHERE id = @id;
+UPDATE jobs SET status = 'queued', run_after = @run_after, error = @error, waiting_on = @waiting_on WHERE id = @id;
+
+-- name: WakeWaitingJobs :exec
+-- Jobs held back until something they wait for changes run now.
+UPDATE jobs SET run_after = @now, waiting_on = '' WHERE status = 'queued' AND waiting_on = @waiting_on;
 
 -- name: ActiveJobForUnit :one
 SELECT * FROM jobs WHERE unit_id = @unit_id AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1;

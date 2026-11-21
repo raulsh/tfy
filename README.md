@@ -26,7 +26,7 @@ It runs locally. `tfy serve` is the backend and serves the UI on `127.0.0.1`; `t
 
 ## Requirements
 
-- [Claude Code](https://claude.com/claude-code) 2.1+, signed in (`claude auth login`)
+- [Claude Code](https://claude.com/claude-code) 2.1+, signed in (`claude auth login`), or accounts with their own token, key or Bedrock profile (see [Accounts](#accounts))
 - [GitHub CLI](https://cli.github.com), signed in (`gh auth login`)
 - git
 - [slk](https://github.com/raulsh/slk), signed in (`slk configure`); optional, needed only for Slack feedback intake
@@ -64,6 +64,20 @@ tfy serve --open # prints a link with a token, and opens it
    - merge once the review approves.
 
 To try the whole pipeline without spending tokens or touching GitHub, run `make demo`. It serves on port 7430 against fake `claude` and `gh` and a local "GitHub". Link `acme/app` to a project to start.
+
+## Accounts
+
+Runs sign in with **accounts**, set up in Settings → Accounts: more than one subscription to spread usage, or Amazon Bedrock. On a new install there is one, *this machine's Claude login*: the `claude` login and the provider its settings choose, as before.
+
+- **Subscription token:** run `claude setup-token` with that subscription, and paste the token into tfy. Serving tfy on your network? Run `tfy account secret <id>` on the server instead: a token typed in the browser crosses the network in plain HTTP.
+- **Amazon Bedrock:** a region, and an AWS profile or a Bedrock API key. A profile allowed only `bedrock:InvokeModel*` is safest. Each model alias (opus, sonnet, haiku, fable) can map to a Bedrock model; fable refuses there, so map it to Opus.
+- **API key.**
+
+Secrets stay in `~/.tfy/accounts`, readable by you alone, never in the database or in the API's answers. Runs get their account's credentials, and nothing else: an inherited `ANTHROPIC_API_KEY` or the provider in your Claude Code settings cannot sign a token account in elsewhere. The agent's shell commands, and the tests they start, see no model credentials at all.
+
+**Which account runs what.** A list of accounts, in order of preference, plus per stage an account, model and effort level: globally under Settings → Run stages, and per project in its Accounts tab, which wins. A new unit can override any stage too. A stage without an account runs on the first one in the list, and the config file still sets each stage's budget and time limit.
+
+**Usage limits.** When an account reaches its limit, tfy pauses it until its reset and the run carries on with the next account in the list, in the same session if it had got anywhere. A session does not move between providers, say a subscription and Bedrock: there the run starts over, told that some of the work may be done. When every account is limited, the unit waits, and work resumes as soon as one frees up. **Resume now** on an account, or **Retry** on a unit, tries again at once.
 
 ## Conventions
 
@@ -113,7 +127,7 @@ A unit can be linked to GitHub issues: create it from one (New unit → GitHub i
 Each Claude run gets only what its stage needs, and several layers stop it from publishing on its own:
 
 - **Isolated checkouts.** Every unit works in its own `git clone --local` checkouts, **with no remote**. Only tfy pushes and opens pull requests, using your credentials.
-- **No publishing credentials.** Runs start from a scrubbed environment: no `GH_TOKEN`, no SSH agent, an empty `gh` configuration, and a gitconfig with no credential helper.
+- **No publishing credentials.** Runs start from a scrubbed environment: no `GH_TOKEN`, no SSH agent, an empty `gh` configuration, and a gitconfig with no credential helper. The CLI gets its account's credentials, which the agent's shell commands start without.
 - **A guard hook.** Every shell command passes through `tfy hook-guard`, which parses it and blocks pushes, remote and credential changes, and `gh`. It catches `git -C`, `sh -c`, `eval`, wrappers, and command substitutions. If the guard fails to run, the run is aborted, because the CLI itself would fail open.
 - **Isolated settings.** A unit's runs load only the workspace as a Claude Code project (`--setting-sources project`), whose settings tfy rewrites before every run; user settings, MCP servers (strict, none) and anything an agent left in the workspace's `.claude` stay out. Each run has an explicit tool list and a permission mode per stage:
 

@@ -262,7 +262,7 @@ function CreateUnitModal({
 				<Form.Item name="description" label="Note for Claude">
 					<Input.TextArea autoSize={{ minRows: 2 }} placeholder="Optional context the messages don't carry" />
 				</Form.Item>
-				<RunOverridesField />
+				<RunOverridesField projectId={feedback[0]?.project_id} />
 			</Form>
 		</Modal>
 	);

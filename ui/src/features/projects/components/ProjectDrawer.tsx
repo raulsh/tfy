@@ -1,6 +1,7 @@
 import { App, Button, Form, Input, InputNumber, Popconfirm, Select, Spin, Switch, Tabs } from "antd";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { useEffect } from "react";
+import { ProjectAccountsTab } from "@/features/accounts/components/ProjectAccountsTab";
 import type { Project, ProjectSettings } from "@/shared/api/types";
 import { Chip } from "@/shared/components/Chip";
 import { Mono, TimeAgo } from "@/shared/components/misc";
@@ -62,6 +63,7 @@ export function ProjectDrawer({ projectId, onClose }: { projectId?: string; onCl
 						{ key: "details", label: "Details", children: <DetailsTab project={project} /> },
 						{ key: "conventions", label: "Conventions", children: <ConventionsTab project={project} /> },
 						{ key: "settings", label: "Pipeline", children: <SettingsTab project={project} /> },
+						{ key: "accounts", label: "Accounts", children: <ProjectAccountsTab project={project} /> },
 						{ key: "slack", label: "Slack", children: <SlackSources projectId={project.id} /> },
 					]}
 				/>

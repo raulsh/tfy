@@ -13,7 +13,7 @@ import (
 )
 
 const activeJobByKey = `-- name: ActiveJobByKey :one
-SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at FROM jobs WHERE dedupe_key = ?1 AND status IN ('queued', 'running') LIMIT 1
+SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at, waiting_on FROM jobs WHERE dedupe_key = ?1 AND status IN ('queued', 'running') LIMIT 1
 `
 
 func (q *Queries) ActiveJobByKey(ctx context.Context, dedupeKey sql.NullString) (Job, error) {
@@ -33,12 +33,13 @@ func (q *Queries) ActiveJobByKey(ctx context.Context, dedupeKey sql.NullString) 
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.WaitingOn,
 	)
 	return i, err
 }
 
 const activeJobForUnit = `-- name: ActiveJobForUnit :one
-SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at FROM jobs WHERE unit_id = ?1 AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1
+SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at, waiting_on FROM jobs WHERE unit_id = ?1 AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1
 `
 
 func (q *Queries) ActiveJobForUnit(ctx context.Context, unitID sql.NullString) (Job, error) {
@@ -58,6 +59,7 @@ func (q *Queries) ActiveJobForUnit(ctx context.Context, unitID sql.NullString) (
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.WaitingOn,
 	)
 	return i, err
 }
@@ -81,7 +83,7 @@ UPDATE jobs SET status = 'running', attempts = attempts + 1, started_at = ?1
 WHERE id = (SELECT j.id FROM jobs j
             WHERE j.status = 'queued' AND j.run_after <= ?1 AND j.kind IN (/*SLICE:kinds*/?)
             ORDER BY j.run_after, j.created_at LIMIT 1)
-RETURNING id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at
+RETURNING id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at, waiting_on
 `
 
 type ClaimJobParams struct {
@@ -117,6 +119,7 @@ func (q *Queries) ClaimJob(ctx context.Context, arg ClaimJobParams) (Job, error)
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.WaitingOn,
 	)
 	return i, err
 }
@@ -124,7 +127,7 @@ func (q *Queries) ClaimJob(ctx context.Context, arg ClaimJobParams) (Job, error)
 const enqueueJob = `-- name: EnqueueJob :one
 INSERT INTO jobs (id, kind, unit_id, project_id, payload, status, dedupe_key, run_after, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?7, ?8)
-RETURNING id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at
+RETURNING id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at, waiting_on
 `
 
 type EnqueueJobParams struct {
@@ -164,6 +167,7 @@ func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, er
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.WaitingOn,
 	)
 	return i, err
 }
@@ -190,7 +194,7 @@ func (q *Queries) FinishJob(ctx context.Context, arg FinishJobParams) error {
 }
 
 const getJob = `-- name: GetJob :one
-SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at FROM jobs WHERE id = ?1
+SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at, waiting_on FROM jobs WHERE id = ?1
 `
 
 func (q *Queries) GetJob(ctx context.Context, id string) (Job, error) {
@@ -210,6 +214,7 @@ func (q *Queries) GetJob(ctx context.Context, id string) (Job, error) {
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.WaitingOn,
 	)
 	return i, err
 }
@@ -242,7 +247,7 @@ func (q *Queries) ListBusyUnitIDs(ctx context.Context) ([]string, error) {
 }
 
 const listRunningJobs = `-- name: ListRunningJobs :many
-SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at FROM jobs WHERE status = 'running'
+SELECT id, kind, unit_id, project_id, payload, status, attempts, dedupe_key, run_after, error, created_at, started_at, finished_at, waiting_on FROM jobs WHERE status = 'running'
 `
 
 func (q *Queries) ListRunningJobs(ctx context.Context) ([]Job, error) {
@@ -268,6 +273,7 @@ func (q *Queries) ListRunningJobs(ctx context.Context) ([]Job, error) {
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.WaitingOn,
 		); err != nil {
 			return nil, err
 		}
@@ -293,16 +299,37 @@ func (q *Queries) ReleaseJobDedupe(ctx context.Context, id string) error {
 }
 
 const requeueJob = `-- name: RequeueJob :exec
-UPDATE jobs SET status = 'queued', run_after = ?1, error = ?2 WHERE id = ?3
+UPDATE jobs SET status = 'queued', run_after = ?1, error = ?2, waiting_on = ?3 WHERE id = ?4
 `
 
 type RequeueJobParams struct {
-	RunAfter time.Time `json:"run_after"`
-	Error    string    `json:"error"`
-	ID       string    `json:"id"`
+	RunAfter  time.Time `json:"run_after"`
+	Error     string    `json:"error"`
+	WaitingOn string    `json:"waiting_on"`
+	ID        string    `json:"id"`
 }
 
 func (q *Queries) RequeueJob(ctx context.Context, arg RequeueJobParams) error {
-	_, err := q.db.ExecContext(ctx, requeueJob, arg.RunAfter, arg.Error, arg.ID)
+	_, err := q.db.ExecContext(ctx, requeueJob,
+		arg.RunAfter,
+		arg.Error,
+		arg.WaitingOn,
+		arg.ID,
+	)
+	return err
+}
+
+const wakeWaitingJobs = `-- name: WakeWaitingJobs :exec
+UPDATE jobs SET run_after = ?1, waiting_on = '' WHERE status = 'queued' AND waiting_on = ?2
+`
+
+type WakeWaitingJobsParams struct {
+	Now       time.Time `json:"now"`
+	WaitingOn string    `json:"waiting_on"`
+}
+
+// Jobs held back until something they wait for changes run now.
+func (q *Queries) WakeWaitingJobs(ctx context.Context, arg WakeWaitingJobsParams) error {
+	_, err := q.db.ExecContext(ctx, wakeWaitingJobs, arg.Now, arg.WaitingOn)
 	return err
 }

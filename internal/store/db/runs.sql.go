@@ -12,9 +12,9 @@ import (
 )
 
 const createRun = `-- name: CreateRun :one
-INSERT INTO runs (id, unit_id, project_id, parent_run_id, kind, status, model, effort, permission_mode, prompt_version, cwd, created_at)
-VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?7, ?8, ?9, ?10, ?11)
-RETURNING id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at
+INSERT INTO runs (id, unit_id, project_id, parent_run_id, kind, status, account_id, engine, model, effort, permission_mode, prompt_version, cwd, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+RETURNING id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at, account_id, engine
 `
 
 type CreateRunParams struct {
@@ -23,6 +23,8 @@ type CreateRunParams struct {
 	ProjectID      sql.NullString `json:"project_id"`
 	ParentRunID    string         `json:"parent_run_id"`
 	Kind           string         `json:"kind"`
+	AccountID      string         `json:"account_id"`
+	Engine         string         `json:"engine"`
 	Model          string         `json:"model"`
 	Effort         string         `json:"effort"`
 	PermissionMode string         `json:"permission_mode"`
@@ -38,6 +40,8 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		arg.ProjectID,
 		arg.ParentRunID,
 		arg.Kind,
+		arg.AccountID,
+		arg.Engine,
 		arg.Model,
 		arg.Effort,
 		arg.PermissionMode,
@@ -71,6 +75,8 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.AccountID,
+		&i.Engine,
 	)
 	return i, err
 }
@@ -152,7 +158,7 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) error {
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at FROM runs WHERE id = ?1
+SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at, account_id, engine FROM runs WHERE id = ?1
 `
 
 func (q *Queries) GetRun(ctx context.Context, id string) (Run, error) {
@@ -183,6 +189,8 @@ func (q *Queries) GetRun(ctx context.Context, id string) (Run, error) {
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.AccountID,
+		&i.Engine,
 	)
 	return i, err
 }
@@ -203,7 +211,7 @@ func (q *Queries) InterruptRun(ctx context.Context, arg InterruptRunParams) erro
 }
 
 const lastSessionRun = `-- name: LastSessionRun :one
-SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at FROM runs
+SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at, account_id, engine FROM runs
 WHERE unit_id = ?1 AND kind = ?2 AND session_id != '' AND status IN ('succeeded', 'failed', 'cancelled', 'timed_out', 'budget_exceeded', 'interrupted')
 ORDER BY created_at DESC LIMIT 1
 `
@@ -242,12 +250,14 @@ func (q *Queries) LastSessionRun(ctx context.Context, arg LastSessionRunParams) 
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.AccountID,
+		&i.Engine,
 	)
 	return i, err
 }
 
 const listLiveRuns = `-- name: ListLiveRuns :many
-SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at FROM runs WHERE status IN ('queued', 'running')
+SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at, account_id, engine FROM runs WHERE status IN ('queued', 'running')
 `
 
 func (q *Queries) ListLiveRuns(ctx context.Context) ([]Run, error) {
@@ -284,6 +294,8 @@ func (q *Queries) ListLiveRuns(ctx context.Context) ([]Run, error) {
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.AccountID,
+			&i.Engine,
 		); err != nil {
 			return nil, err
 		}
@@ -299,7 +311,7 @@ func (q *Queries) ListLiveRuns(ctx context.Context) ([]Run, error) {
 }
 
 const listRuns = `-- name: ListRuns :many
-SELECT runs.id, runs.unit_id, runs.project_id, runs.parent_run_id, runs.kind, runs.status, runs.reason, runs.session_id, runs.model, runs.effort, runs.permission_mode, runs.prompt_version, runs.cwd, runs.pid, runs.cost_usd, runs.cost_total_usd, runs.input_tokens, runs.output_tokens, runs.turns, runs.denials, runs.result, runs.created_at, runs.started_at, runs.ended_at, COALESCE(units.seq, 0) AS unit_seq, COALESCE(units.title, '') AS unit_title
+SELECT runs.id, runs.unit_id, runs.project_id, runs.parent_run_id, runs.kind, runs.status, runs.reason, runs.session_id, runs.model, runs.effort, runs.permission_mode, runs.prompt_version, runs.cwd, runs.pid, runs.cost_usd, runs.cost_total_usd, runs.input_tokens, runs.output_tokens, runs.turns, runs.denials, runs.result, runs.created_at, runs.started_at, runs.ended_at, runs.account_id, runs.engine, COALESCE(units.seq, 0) AS unit_seq, COALESCE(units.title, '') AS unit_title
 FROM runs LEFT JOIN units ON units.id = runs.unit_id
 WHERE (?1 IS NULL OR runs.unit_id = ?1)
   AND (?2 IS NULL OR runs.project_id = ?2)
@@ -338,6 +350,8 @@ type ListRunsRow struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	StartedAt      sql.NullTime   `json:"started_at"`
 	EndedAt        sql.NullTime   `json:"ended_at"`
+	AccountID      string         `json:"account_id"`
+	Engine         string         `json:"engine"`
 	UnitSeq        int64          `json:"unit_seq"`
 	UnitTitle      string         `json:"unit_title"`
 }
@@ -376,6 +390,8 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]ListRunsR
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.AccountID,
+			&i.Engine,
 			&i.UnitSeq,
 			&i.UnitTitle,
 		); err != nil {

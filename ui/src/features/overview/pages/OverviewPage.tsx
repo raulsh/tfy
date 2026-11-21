@@ -38,13 +38,16 @@ export default function OverviewPage() {
 					<Metric label="Inbox to review" value={toReview} hint={`${feedback.proposal ?? 0} proposals`} />
 					<Metric label="Shipped, 14 days" value={shipped} />
 					<Metric label="Spend today" value={usd(stats?.cost_today_usd)} hint={`7 days ${usd(stats?.cost_7d_usd)}`} />
-					{stats?.paused_until && (
-						<Metric
-							label="Claude paused until"
-							value={new Date(stats.paused_until).toLocaleTimeString()}
-							tone={status.warn}
-						/>
-					)}
+					{(stats?.accounts ?? [])
+						.filter((a) => a.paused_until)
+						.map((a) => (
+							<Metric
+								key={a.id}
+								label={`${a.name}: limited until`}
+								value={new Date(a.paused_until ?? "").toLocaleTimeString()}
+								tone={status.warn}
+							/>
+						))}
 				</div>
 				<Card title="Pipeline">
 					<StageFunnel counts={stats?.units_by_stage ?? {}} selected={[]} onSelect={() => {}} />

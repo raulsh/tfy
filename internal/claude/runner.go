@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -44,6 +45,9 @@ type Outcome struct {
 	Stderr    string // tail
 	StartedAt time.Time
 	EndedAt   time.Time
+	// LimitedUntil, on a rate-limited outcome, is when the first of the
+	// accounts the run could use is free again. The pipeline sets it.
+	LimitedUntil time.Time
 }
 
 // Callbacks observe a run while it happens. Both are optional and are called
@@ -249,8 +253,13 @@ func (r *Runner) Run(ctx context.Context, spec *Spec, cb Callbacks) *Outcome {
 		}
 	case strings.Contains(res.Subtype, "budget"):
 		out.Status, out.Reason = StatusBudgetExceeded, "the run hit its budget"
-	case res.IsError && mon.rateLimited:
+	// A provider other than Anthropic's reports no usage windows, only the
+	// API's 429 (docs/spike.md).
+	case res.IsError && (mon.rateLimited || res.APIErrorStatus == 429):
 		out.Status, out.Reason = StatusRateLimited, "rate limited"
+		if rl := mon.rateLimit; rl != nil && rl.NeedsCredits() {
+			out.Reason = clip(oneLine(res.Result), 300)
+		}
 	case res.IsError:
 		out.Status = StatusFailed
 		out.Reason = res.Subtype
@@ -361,4 +370,31 @@ func (r *Runner) Purge(ctx context.Context, dir string) error {
 		return fmt.Errorf("claude project purge: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// AuthStatus is what `claude auth status --json` reports for an environment:
+// it follows the credentials and provider the environment sets.
+type AuthStatus struct {
+	LoggedIn         bool   `json:"loggedIn"`
+	AuthMethod       string `json:"authMethod,omitempty"`
+	APIProvider      string `json:"apiProvider,omitempty"`
+	SubscriptionType string `json:"subscriptionType,omitempty"`
+	Email            string `json:"email,omitempty"`
+	OrgName          string `json:"orgName,omitempty"`
+}
+
+// AuthStatus asks the CLI how env signs in. The CLI exits non-zero when it is
+// not signed in, with the report still on stdout.
+func (r *Runner) AuthStatus(ctx context.Context, env []string) (AuthStatus, error) {
+	cmd := exec.CommandContext(ctx, r.bin(), "auth", "status", "--json")
+	cmd.Env = env
+	out, err := cmd.Output()
+	var st AuthStatus
+	if jerr := json.Unmarshal(out, &st); jerr != nil {
+		if err == nil {
+			err = jerr
+		}
+		return st, fmt.Errorf("claude auth status: %v", err)
+	}
+	return st, nil
 }

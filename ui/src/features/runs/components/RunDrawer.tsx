@@ -2,6 +2,7 @@ import { App, Button, Popconfirm, Spin } from "antd";
 import { Square } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { accountNames, useAccounts } from "@/features/accounts/hooks";
 import { Chip } from "@/shared/components/Chip";
 import { JsonView, Metric, Mono } from "@/shared/components/misc";
 import { Card, OverlayDrawer } from "@/shared/components/OverlayDrawer";
@@ -15,6 +16,7 @@ import { EventTimeline } from "./EventTimeline";
 // One Claude run: its metrics, its structured result, and its events as a
 // live trace.
 export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => void }) {
+	const names = accountNames(useAccounts().data);
 	const { data: run, isLoading } = useRun(runId);
 	const stream = useRunStream(runId);
 	const cancel = useCancelRun();
@@ -54,6 +56,7 @@ export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => v
 								<Chip k="unit" v={`${run.unit_label} ${run.unit_title ?? ""}`} />
 							</Link>
 						)}
+						{run.account_id && <Chip k="account" v={names[run.account_id] ?? run.account_id} />}
 						<Chip k="model" v={run.model || "—"} mono />
 						<Chip k="effort" v={run.effort || "—"} mono />
 						<Chip k="mode" v={run.permission_mode || "—"} mono />
