@@ -130,7 +130,11 @@ func runDevClaude(ctx context.Context, o devClaudeOpts) error {
 	if err := os.WriteFile(gitconfig, []byte(gitIdentity()), 0o644); err != nil {
 		return err
 	}
-	spec.Env = claude.BuildEnv(claude.EnvOptions{GitConfigGlobal: gitconfig, GHConfigDir: ghDir})
+	shellEnv := filepath.Join(scratch, "shell-env.sh")
+	if err := claude.WriteShellEnv(shellEnv); err != nil {
+		return err
+	}
+	spec.Env = claude.BuildEnv(claude.EnvOptions{GitConfigGlobal: gitconfig, GHConfigDir: ghDir, ShellEnvFile: shellEnv})
 	if profile.Guarded {
 		self, err := os.Executable()
 		if err != nil {

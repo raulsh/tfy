@@ -95,7 +95,12 @@ func (p *Pipeline) runClaude(ctx context.Context, req runRequest) (db.Run, *clau
 	if subagents {
 		spec.Tools = append(spec.Tools, claude.AgentTool)
 	}
-	envOpts := claude.EnvOptions{GitConfigGlobal: p.Paths.GitConfig(), GHConfigDir: p.Paths.GHConfig()}
+	envOpts := claude.EnvOptions{
+		GitConfigGlobal: p.Paths.GitConfig(), GHConfigDir: p.Paths.GHConfig(), ShellEnvFile: filepath.Join(runDir, "shell-env.sh"),
+	}
+	if err := claude.WriteShellEnv(envOpts.ShellEnvFile); err != nil {
+		return db.Run{}, nil, err
+	}
 	spec.GuardMarker = claude.GuardMarker
 	// A unit's runs load conventions the way Claude Code does in a
 	// repository: the workspace is made a Claude Code project first.

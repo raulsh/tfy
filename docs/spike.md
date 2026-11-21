@@ -142,3 +142,20 @@ What tfy does with this:
 - **The runner waits for them.** The post-result grace runs only while the session is idle: it reported a result, no sub-agent is working, and it has not resumed since. The result the run keeps adds up the turns, and keeps the structured output if the last turn did not repeat it (`TestRunWaitsForResumedTurn`).
 - **The Agents view** comes from these events: `task_started` gives each sub-agent's name, type and prompt, its own messages give what it is doing now, `task_progress` its tool calls and tokens, and `SubagentHandback` its report.
 - **Not yet:** a checkout's own `.claude/agents`. Claude Code's documentation lets an agent's frontmatter set its own `permissionMode`, `hooks` and `mcpServers` (not checked here), so they need the same default-branch check as the repositories' hooks before tfy puts them in the workspace.
+
+## Another provider: Bedrock (2.1.289, 2026-10-04)
+
+Seen for real: after the subscription reached its five-hour limit, the CLI was switched to Bedrock (`CLAUDE_CODE_USE_BEDROCK` and an `AWS_PROFILE` in the `env` of `~/.claude/settings.json`), and retried runs did nothing.
+- A rate-limited run pauses Claude work until the account's reset, and the retried jobs waited behind that pause.
+- Runs don't load the user's settings (`--setting-sources` is `project` at most), and their environment had no provider variables. Runs would have stayed on the subscription (`apiKeySource: "none"`, then a 429: "You've hit your session limit · resets 11pm").
+
+Checked with haiku, opus and fable at low effort, against Bedrock in `us-east-1` through an SSO profile:
+
+| Question | Answer | Consequence |
+|---|---|---|
+| What does a run need? | `CLAUDE_CODE_USE_BEDROCK`, `AWS_REGION` and credentials; `AWS_PROFILE` resolved through `~/.aws` under `HOME`. `ANTHROPIC_DEFAULT_*_MODEL` map the aliases; without them the CLI picks its own Bedrock IDs (`fable` became `us.anthropic.claude-fable-5-1`). `apiKeySource` stays `"none"`, `modelUsage.*.provider` is `"bedrock"`, and no `rate_limit_event` arrives. | `BuildEnv` passes the provider's variables from tfy's environment, then from the `env` of the user's settings, whose values win, as in the user's sessions. |
+| Do the agent's commands inherit them? | The Bash tool runs with the CLI's environment. `CLAUDE_ENV_FILE`, set in that environment, names a script the CLI inlines ahead of every Bash command, in the same shell. Read in the CLI's code rather than run; the CLI skips the script only in its own scrub mode. | Every run gets a `shell-env.sh` that unsets each provider variable, and repository hooks start with the same line. |
+| `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`? | It strips provider credentials from subprocesses. Its messages say it needs bubblewrap and can force the permission mode to `default`. | Not used; not tried. |
+| Do the stage models answer? | `haiku` and `opus` did. `fable`, under the CLI's default system prompt, was stopped by the cyber safeguards on a one-word prompt (`model_refusal_fallback`, `api_refusal_category: "cyber"`). The CLI retried on Opus 5.5, which answered once and refused the flagged session once (`model_refusal_no_fallback`; the result has `is_error` and `stop_reason: "refusal"`). With a one-sentence `--system-prompt`, fable answered. | On Bedrock, plan and review need another model until fable stops refusing there. |
+
+The unset keeps a provider's credentials out of what the agent's commands inherit, not out of their reach: the CLI's own environment is readable under `/proc`, and an SSO profile's tokens sit under `~/.aws`. Credentials that reach Bedrock alone are the safer choice: a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`, or a profile allowed only `bedrock:InvokeModel*`.

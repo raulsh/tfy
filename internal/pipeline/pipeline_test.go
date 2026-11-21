@@ -770,6 +770,9 @@ func newHarness(t *testing.T) *harness {
 	remotes := filepath.Join(root, "remotes")
 	t.Setenv("FAKE_REMOTES", remotes)
 	t.Setenv("FAKE_GH_STATE", t.TempDir())
+	// Runs take their provider from the user's Claude Code settings: none
+	// here, unless a test writes some.
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 
 	// The "GitHub" side: a bare repository with one commit on main.
 	seed := filepath.Join(root, "seed")

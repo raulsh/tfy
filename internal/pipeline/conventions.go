@@ -365,10 +365,12 @@ func mergeRepoHooks(hooks map[string][]any, repoHooks any, checkout string) int 
 
 // repoHookCommand wraps a repository hook's command so that it runs from the
 // checkout with CLAUDE_PROJECT_DIR set to it, as in the repository's own
-// sessions; the braces keep a compound command together.
+// sessions; the braces keep a compound command together. Like the agent's
+// commands, it runs without the provider's credentials: it may run what the
+// agent wrote, such as tests.
 func repoHookCommand(checkout, command string) string {
 	q := shellQuote(checkout)
-	return "export CLAUDE_PROJECT_DIR=" + q + " && cd " + q + " && {\n" + command + "\n}"
+	return claude.ShellEnv() + "export CLAUDE_PROJECT_DIR=" + q + " && cd " + q + " && {\n" + command + "\n}"
 }
 
 func shellQuote(s string) string {

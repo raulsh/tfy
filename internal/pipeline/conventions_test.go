@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/raulsh/tfy/internal/claude"
 	"github.com/raulsh/tfy/internal/domain"
 	"github.com/raulsh/tfy/internal/store"
 	"github.com/raulsh/tfy/internal/store/db"
@@ -122,7 +123,7 @@ func TestConventionsReachEveryRun(t *testing.T) {
 	}
 	hooks := settings["hooks"].(map[string]any)["PostToolUse"].([]any)[0].(map[string]any)["hooks"].([]any)
 	cmd := hooks[0].(map[string]any)["command"].(string)
-	if !strings.HasPrefix(cmd, "export CLAUDE_PROJECT_DIR='"+checkout+"' && cd '"+checkout+"'") || !strings.Contains(cmd, hookCmd) {
+	if !strings.HasPrefix(cmd, claude.ShellEnv()+"export CLAUDE_PROJECT_DIR='"+checkout+"' && cd '"+checkout+"'") || !strings.Contains(cmd, hookCmd) {
 		t.Errorf("the repository hook must run from its checkout: %q", cmd)
 	}
 	if hooks[1].(map[string]any)["prompt"] != "Is the commit message conventional?" {
@@ -292,22 +293,23 @@ func (h *harness) waitDocFor(unitID, kind string, version int64, limit time.Dura
 	}
 }
 
-// A repository hook runs as it would in the repository's own session.
+// A repository hook runs as it would in the repository's own session, but
+// without the credentials of the CLI's provider.
 func TestRepoHookCommandRunsInTheCheckout(t *testing.T) {
 	checkout := filepath.Join(t.TempDir(), "it's here")
 	if err := os.MkdirAll(checkout, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := repoHookCommand(checkout, `echo "$CLAUDE_PROJECT_DIR"; pwd || true`)
+	cmd := repoHookCommand(checkout, `echo "$CLAUDE_PROJECT_DIR"; pwd || true; echo "${AWS_PROFILE-none}"`)
 	c := exec.Command("sh", "-c", cmd)
-	c.Env = append(os.Environ(), "CLAUDE_PROJECT_DIR=/the/workspace")
+	c.Env = append(os.Environ(), "CLAUDE_PROJECT_DIR=/the/workspace", "AWS_PROFILE=admin")
 	c.Dir = t.TempDir()
 	out, err := c.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lines := strings.Split(strings.TrimSpace(string(out)), "\n"); len(lines) != 2 || lines[0] != checkout || lines[1] != checkout {
-		t.Errorf("hook saw %q, want the checkout twice", lines)
+	if lines := strings.Split(strings.TrimSpace(string(out)), "\n"); !slices.Equal(lines, []string{checkout, checkout, "none"}) {
+		t.Errorf("hook saw %q, want the checkout twice and no AWS profile", lines)
 	}
 }
 

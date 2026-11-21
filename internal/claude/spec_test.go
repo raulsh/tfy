@@ -2,6 +2,9 @@ package claude
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -122,6 +125,49 @@ func TestBuildEnvDropsPublishingCredentials(t *testing.T) {
 	}
 	if slices.Contains(env, "TERM=dumb") {
 		t.Error("Extra must override defaults")
+	}
+}
+
+// A provider such as Bedrock reaches the CLI, from tfy's environment and from
+// the user's Claude Code settings, which runs don't load. The agent's
+// commands get none of it, and publishing credentials stay out either way.
+func TestBuildEnvGivesTheProviderToTheCLIAlone(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	settings := `{"env": {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "bedrock", "AWS_REGION": "us-west-2", "GH_TOKEN": "secret"}, "permissions": {"allow": ["Bash"]}}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "key")
+	t.Setenv("GH_TOKEN", "secret")
+	t.Setenv("SSH_AUTH_SOCK", "/tmp/agent")
+	shellEnv := filepath.Join(t.TempDir(), "shell-env.sh")
+	if err := WriteShellEnv(shellEnv); err != nil {
+		t.Fatal(err)
+	}
+	env := BuildEnv(EnvOptions{ShellEnvFile: shellEnv})
+	for _, want := range []string{"CLAUDE_CODE_USE_BEDROCK=1", "AWS_PROFILE=bedrock", "AWS_REGION=us-west-2", "AWS_SECRET_ACCESS_KEY=key", "CLAUDE_ENV_FILE=" + shellEnv} {
+		if !slices.Contains(env, want) {
+			t.Errorf("the CLI lacks %s", want)
+		}
+	}
+
+	// The CLI runs the file in the shell of each of the agent's commands.
+	cmd := exec.Command("sh", "-c", `. "$CLAUDE_ENV_FILE" && env`)
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := "\n" + string(out)
+	for _, k := range append(slices.Clone(credentialEnv), "GH_TOKEN", "SSH_AUTH_SOCK") {
+		if strings.Contains(seen, "\n"+k+"=") {
+			t.Errorf("the agent's commands see %s", k)
+		}
+	}
+	if !strings.Contains(seen, "\nHOME=") {
+		t.Errorf("the agent's commands lost the rest of the environment:%s", seen)
 	}
 }
 
