@@ -2,12 +2,13 @@ package store
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
 // A new database starts with this machine's Claude login as its one account,
-// used by default.
+// used by default, and only its owner can read it.
 func TestOpenSeedsTheMachineAccount(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "tfy.db")
@@ -29,5 +30,10 @@ func TestOpenSeedsTheMachineAccount(t *testing.T) {
 	runs, err := st.Q.GetAppSetting(ctx, "runs")
 	if err != nil || runs != `{"accounts":["machine"],"stages":{}}` {
 		t.Errorf("runs setting = %q (%v)", runs, err)
+	}
+	for _, f := range []string{path, path + "-wal"} {
+		if fi, err := os.Stat(f); err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("%s: %v (%v)", filepath.Base(f), fi.Mode().Perm(), err)
+		}
 	}
 }

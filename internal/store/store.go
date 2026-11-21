@@ -60,6 +60,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		sqldb.Close()
 		return nil, err
 	}
+	// Prompts, results and messages: for the owner's eyes only.
+	for _, f := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(f, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			sqldb.Close()
+			return nil, err
+		}
+	}
 	return &Store{DB: sqldb, Q: db.New(sqldb)}, nil
 }
 
