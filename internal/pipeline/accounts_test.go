@@ -14,6 +14,7 @@ import (
 
 	"github.com/raulsh/tfy/internal/domain"
 	"github.com/raulsh/tfy/internal/jobs"
+	"github.com/raulsh/tfy/internal/store"
 	"github.com/raulsh/tfy/internal/store/db"
 )
 
@@ -352,8 +353,8 @@ func TestModelNeedingCreditsMovesOnWithoutPausing(t *testing.T) {
 	if pro.PausedUntil.Valid {
 		t.Errorf("a refused model paused the whole account until %v", pro.PausedUntil.Time)
 	}
-	if a := toAccount(pro); func() bool { _, b := a.Blocked("fable", time.Now()); return !b }() {
-		t.Errorf("fable is not blocked on pro: %v", a.ModelBlocks)
+	if b, ok := toAccount(pro).Blocked("fable", time.Now()); !ok || b.Cause != domain.BlockCredits {
+		t.Errorf("fable on pro: %+v blocked=%v, want blocked for want of credits", b, ok)
 	}
 	// Planning runs on opus: pro is the first choice again, and the blocked
 	// model is not tried there.
@@ -398,7 +399,141 @@ func TestNoAccountForTheModelStops(t *testing.T) {
 		u, _ = h.st.Q.GetUnit(ctx, u.ID)
 		return u.Attention != "" && !h.p.Busy(ctx, u.ID)
 	})
-	if u.Attention != string(domain.AttentionFailed) || !strings.Contains(u.AttentionDetail, "needs usage credits on Account pro") || !strings.Contains(u.AttentionDetail, "another model") {
+	if u.Attention != string(domain.AttentionModelUnavailable) || !strings.Contains(u.AttentionDetail, "Account pro cannot run fable without usage credits") || !strings.Contains(u.AttentionDetail, "another model") {
 		t.Errorf("unit: %s: %s", u.Attention, u.AttentionDetail)
+	}
+}
+
+// A model's own usage window, such as Fable's weekly one, refuses that model
+// alone: the run moves on to an account that can still run it, and the
+// account stays free for runs of its other models.
+func TestModelLimitMovesOnWithoutPausing(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.addAccount("sub1", domain.AccountToken, domain.AccountSettings{}, "tok1")
+	h.addAccount("sub2", domain.AccountToken, domain.AccountSettings{}, "tok2")
+	pr := h.project()
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"sub1", "sub2"}, Stages: domain.RunOverrides{"define": {Model: "fable"}}})
+	h.setControl("model-limited-tok1", "fable")
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u = h.waitState(u.ID, domain.StateDefinitionReview); u.Attention != "" {
+		t.Errorf("unit flagged: %s: %s", u.Attention, u.AttentionDetail)
+	}
+	rs := h.runs(u.ID, "define")
+	if len(rs) != 2 || rs[0].AccountID != "sub1" || rs[0].Status != "rate_limited" || !strings.Contains(rs[0].Reason, "Fable limit") || rs[1].AccountID != "sub2" || rs[1].Status != "succeeded" {
+		t.Fatalf("define runs: %+v", rs)
+	}
+	sub1, _ := h.st.Q.GetAccount(ctx, "sub1")
+	if sub1.PausedUntil.Valid {
+		t.Errorf("Fable's limit paused the whole account until %v", sub1.PausedUntil.Time)
+	}
+	// Blocked by family: a full model name of Fable is refused too.
+	if b, ok := toAccount(sub1).Blocked("claude-fable-5-2", time.Now()); !ok || b.Cause != domain.BlockLimit || time.Until(b.Until) < 47*time.Hour {
+		t.Errorf("fable on sub1: %+v blocked=%v, want limited until the window resets", b, ok)
+	}
+	// Planning runs on opus: sub1 is the first choice again.
+	if _, err := h.p.Act(ctx, u.ID, ActionMarkReady, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(u.ID, domain.StateSpecReview)
+	if rs := h.runs(u.ID, "plan"); len(rs) != 1 || rs[0].AccountID != "sub1" {
+		t.Errorf("plan runs: %+v", rs)
+	}
+}
+
+// Seen for real: the only account used up its Fable limit, with its other
+// models free. The unit stops and says so; a person moves the stage to
+// another model and retries, and the block on Fable stays for the runs
+// still set to it.
+func TestSwitchModelWhenNoAccountCanRunIt(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.addAccount("sub1", domain.AccountToken, domain.AccountSettings{}, "tok1")
+	pr := h.project()
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"sub1"}, Stages: domain.RunOverrides{"define": {Model: "fable"}}})
+	h.setControl("model-limited-tok1", "fable")
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("the unit to stop", func() bool {
+		u, _ = h.st.Q.GetUnit(ctx, u.ID)
+		return u.Attention != "" && !h.p.Busy(ctx, u.ID)
+	})
+	if u.Attention != string(domain.AttentionModelUnavailable) || !strings.Contains(u.AttentionDetail, "Account sub1 reached its fable limit") || !strings.Contains(u.AttentionDetail, "Choose another model for the define run") {
+		t.Fatalf("unit: %s: %s", u.Attention, u.AttentionDetail)
+	}
+	if !slices.Contains(AvailableActions(u, false), ActionRetry) {
+		t.Errorf("no retry among %v", AvailableActions(u, false))
+	}
+
+	// Overrides are checked as at creation.
+	if _, err := h.p.SetRunOverrides(ctx, u.ID, domain.RunOverrides{"define": {Account: "nobody"}}, "dev"); err == nil {
+		t.Error("an override naming an unknown account was taken")
+	}
+	if _, err := h.p.SetRunOverrides(ctx, u.ID, domain.RunOverrides{"define": {Model: "opus", Effort: "medium"}}, "dev"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.p.Act(ctx, u.ID, ActionRetry, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	if u = h.waitState(u.ID, domain.StateDefinitionReview); u.Attention != "" {
+		t.Errorf("unit flagged after the switch: %s: %s", u.Attention, u.AttentionDetail)
+	}
+	rs := h.runs(u.ID, "define")
+	if len(rs) != 2 || rs[0].Model != "fable" || rs[1].Model != "opus" || rs[1].Effort != "medium" || rs[1].AccountID != "sub1" || rs[1].Status != "succeeded" {
+		t.Fatalf("define runs: %+v", rs)
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(h.read(filepath.Join(h.control, "args-define.json"))), &args); err != nil {
+		t.Fatal(err)
+	}
+	if flagValue(args, "--model") != "opus" {
+		t.Errorf("the retried run asked for %q", flagValue(args, "--model"))
+	}
+	// The retry was on opus: it says nothing about Fable's limit.
+	sub1, _ := h.st.Q.GetAccount(ctx, "sub1")
+	if _, ok := toAccount(sub1).Blocked("fable", time.Now()); !ok {
+		t.Error("retrying on opus lifted the block on fable")
+	}
+	acts, _ := h.st.Q.ListUnitActivity(ctx, db.ListUnitActivityParams{UnitID: store.NullString(u.ID), Lim: 200})
+	if !slices.ContainsFunc(acts, func(a db.Activity) bool {
+		return a.Actor == "dev" && strings.Contains(a.Message, "define opus, medium effort")
+	}) {
+		t.Errorf("the change is not in the unit's activity")
+	}
+}
+
+// A unit waiting for an account may run at once on another model: some
+// accounts are at their limit, and the others cannot run the stage's model.
+func TestRunOverridesWakeAWaitingJob(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.addAccount("sub1", domain.AccountToken, domain.AccountSettings{}, "tok1")
+	h.addAccount("sub2", domain.AccountToken, domain.AccountSettings{}, "tok2")
+	pr := h.project()
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"sub1", "sub2"}, Stages: domain.RunOverrides{"define": {Model: "fable"}}})
+	h.setControl("rate-limited-tok1", "")
+	h.setControl("credits-required-tok2", "fable")
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("the define job to wait for an account", func() bool {
+		var waiting string
+		_ = h.st.DB.QueryRow(`SELECT waiting_on FROM jobs WHERE unit_id = ? AND status = 'queued'`, u.ID).Scan(&waiting)
+		return waiting == jobs.WaitAccount
+	})
+	if _, err := h.p.SetRunOverrides(ctx, u.ID, domain.RunOverrides{"define": {Model: "sonnet"}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if u = h.waitState(u.ID, domain.StateDefinitionReview); u.Attention != "" {
+		t.Errorf("the unit still waits: %s", u.AttentionDetail)
+	}
+	if rs := h.runs(u.ID, "define"); len(rs) != 3 || rs[2].AccountID != "sub2" || rs[2].Model != "sonnet" || rs[2].Status != "succeeded" {
+		t.Errorf("define runs: %+v", rs)
 	}
 }

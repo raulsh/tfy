@@ -110,12 +110,20 @@ export interface Account {
 	has_secret: boolean;
 	paused_until: string | null;
 	pause_reason?: string;
-	// Models it cannot run for now, such as one its plan has no usage
-	// credits for, until when.
-	model_blocks: Record<string, string>;
+	// Models it cannot run for now, by family (fable, opus…): until when,
+	// and why.
+	model_blocks: Record<string, ModelBlock>;
 	quota: Quota | null;
 	created_at: string;
 	updated_at: string;
+}
+
+// Why an account cannot run a model for now: its plan has no usage credits
+// for it, or the model's own usage window (Fable's weekly one, say) is used
+// up while its other models still run.
+export interface ModelBlock {
+	until: string;
+	cause: "credits" | "limit";
 }
 
 export interface AccountInput {

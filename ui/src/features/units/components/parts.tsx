@@ -1,6 +1,6 @@
 import { App, Button, Checkbox, Input, Modal, Popconfirm, Space, Table, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Check, CircleAlert, GitMerge, RotateCcw, Square, Undo2 } from "lucide-react";
+import { Check, CircleAlert, GitMerge, RotateCcw, SlidersHorizontal, Square, Undo2 } from "lucide-react";
 import { useState } from "react";
 import type { Stage, Unit, UnitAction, UnitDetail } from "@/shared/api/types";
 import { Mono, TimeAgo } from "@/shared/components/misc";
@@ -16,6 +16,7 @@ import {
 	unitTone,
 } from "@/shared/lib/status";
 import { useUnitAction } from "../hooks";
+import { RunSettingsModal } from "./RunOverrides";
 
 export function UnitStateTag({ unit }: { unit: Pick<Unit, "state" | "attention" | "busy"> }) {
 	const tone = unitTone(unit);
@@ -229,12 +230,29 @@ export function StageStepper({ unit }: { unit: Unit }) {
 	);
 }
 
+// The kind of run each working state's job starts.
+const stateRun: Record<string, string> = {
+	defining: "define",
+	planning: "plan",
+	developing: "develop",
+	reviewing: "review",
+	merging: "merge",
+	releasing: "release",
+};
+
+// Attention another account, model or effort may resolve: the model is
+// unavailable, every account is limited, or the run failed or ran out of
+// budget on the one it had.
+const runSettingsHelp = ["model_unavailable", "waiting", "failed", "budget_exceeded", "interrupted"];
+
 // A banner for units that need a person, with the way out.
 export function AttentionBanner({ unit }: { unit: Unit }) {
 	const act = useUnitAction(unit.id);
 	const { message } = App.useApp();
+	const [settingsOpen, setSettingsOpen] = useState(false);
 	const waiting = !unit.attention && isWaitingOnHuman(unit.state) && !unit.busy;
 	if (!unit.attention && !waiting) return null;
+	const run = runSettingsHelp.includes(unit.attention) ? stateRun[unit.state] : undefined;
 	const isError = !!unit.attention && unit.attention !== "waiting" && unit.attention !== "new_feedback";
 	const color = isError ? toneColor.error : toneColor.warn;
 	const title = unit.attention ? (attentionLabel[unit.attention] ?? unit.attention) : "Waiting for you";
@@ -281,6 +299,18 @@ export function AttentionBanner({ unit }: { unit: Unit }) {
 					</Button>
 				</Tooltip>
 			)}
+			{run && (
+				<Tooltip title={`Another model, account or effort for this unit's ${run} runs`}>
+					<Button
+						size="small"
+						type={unit.attention === "model_unavailable" ? "primary" : "default"}
+						icon={<SlidersHorizontal size={14} />}
+						onClick={() => setSettingsOpen(true)}
+					>
+						Change model
+					</Button>
+				</Tooltip>
+			)}
 			{(unit.actions ?? []).includes("retry") && unit.attention && (
 				<Button
 					size="small"
@@ -291,6 +321,7 @@ export function AttentionBanner({ unit }: { unit: Unit }) {
 					Retry
 				</Button>
 			)}
+			{run && <RunSettingsModal unit={unit} open={settingsOpen} focus={run} onClose={() => setSettingsOpen(false)} />}
 		</div>
 	);
 }

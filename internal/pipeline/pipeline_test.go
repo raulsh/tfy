@@ -155,6 +155,22 @@ func fakeClaude() int {
 				"session_id": sid, "result": "Fable 5.1 requires usage credits. Switch to another model.", "api_error_status": 429})
 			return 0
 		}
+		// $FAKE_CONTROL/model-limited-<token> names a model whose own usage
+		// window the token's plan has used up, as Fable's weekly one
+		// (internal/claude/testdata/q12-model-limit.jsonl): every run of it
+		// is refused, while the plan's other models answer.
+		if b, err := os.ReadFile(filepath.Join(dir, "model-limited-"+token)); err == nil && strings.TrimSpace(string(b)) == flagValue(args, "--model") {
+			resets := time.Now().Add(48 * time.Hour).Unix()
+			window := func(used float64, status string) map[string]any {
+				return map[string]any{"utilization": used, "resetsAt": resets, "status": status}
+			}
+			emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": map[string]any{
+				"status": "rejected", "rateLimitType": "seven_day_overage_included", "resetsAt": resets,
+				"unifiedWindows": map[string]any{"five_hour": window(0.2, "allowed"), "seven_day": window(0.5, "allowed"), "seven_day_overage_included": window(1, "rejected")}}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "num_turns": 1, "total_cost_usd": 0, "session_id": sid,
+				"result": "You've hit your Fable limit · resets in 2 days. Switch to another model to continue.", "api_error_status": 429, "api_error": "usage_limit_reached"})
+			return 0
+		}
 		// $FAKE_CONTROL/rate-limited, or rate-limited-<token> for one
 		// subscription token's runs: this run finds its account limited,
 		// once. Holding "worked", it gets some work done first.

@@ -52,3 +52,6 @@ UPDATE units SET merge_admin = @merge_admin, updated_at = @now WHERE id = @id;
 
 -- name: SetUnitSubagents :exec
 UPDATE units SET subagents = @subagents, updated_at = @now WHERE id = @id;
+
+-- name: SetUnitRunOverrides :exec
+UPDATE units SET run_overrides = @run_overrides, updated_at = @now WHERE id = @id;

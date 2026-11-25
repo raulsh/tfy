@@ -146,6 +146,9 @@ const (
 	AttentionBranchRules     Attention = "branch_rules"  // GitHub's rules for the base branch refuse the merge
 	AttentionCIFailed        Attention = "ci_failed"
 	AttentionNewFeedback     Attention = "new_feedback"
+	// AttentionModelUnavailable: none of the accounts for a run can run its
+	// model for now. A person chooses another, or retries later.
+	AttentionModelUnavailable Attention = "model_unavailable"
 )
 
 // Kind is what sort of change a unit is.

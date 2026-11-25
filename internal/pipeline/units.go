@@ -1,10 +1,12 @@
 package pipeline
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/raulsh/tfy/internal/domain"
+	"github.com/raulsh/tfy/internal/jobs"
 	"github.com/raulsh/tfy/internal/store"
 	"github.com/raulsh/tfy/internal/store/db"
 )
@@ -270,6 +273,73 @@ func (p *Pipeline) SetSubagents(ctx context.Context, unitID string, on bool, act
 	p.activity(ctx, u.ID, actorOr(actor), "settings", msg, nil)
 	p.changed("unit", u.ID)
 	return p.Store.Q.GetUnit(ctx, u.ID)
+}
+
+// SetRunOverrides replaces the unit's own account, model and effort per kind
+// of run; what they leave out comes from the project's settings. They hold
+// from the next run on: runs going now keep theirs, and work waiting for an
+// account tries again at once, since another choice may let it run.
+func (p *Pipeline) SetRunOverrides(ctx context.Context, unitID string, o domain.RunOverrides, actor string) (db.Unit, error) {
+	u, err := p.Store.Q.GetUnit(ctx, unitID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return u, &NotFoundError{What: "unit"}
+		}
+		return u, err
+	}
+	o, err = o.Normalize()
+	if err != nil {
+		return u, &InvalidError{Msg: err.Error()}
+	}
+	if err := p.checkOverrides(ctx, u.ProjectID, o); err != nil {
+		return u, err
+	}
+	old := domain.ParseRunOverrides(u.RunOverrides)
+	if maps.Equal(old, o) {
+		return u, nil
+	}
+	if err := p.Store.Q.SetUnitRunOverrides(ctx, db.SetUnitRunOverridesParams{RunOverrides: o.JSON(), Now: store.Now(), ID: u.ID}); err != nil {
+		return u, err
+	}
+	p.activity(ctx, u.ID, actorOr(actor), "settings", p.describeOverrides(ctx, old, o), nil)
+	p.changed("unit", u.ID)
+	if err := p.Jobs.WakeWaiting(context.WithoutCancel(ctx), jobs.WaitAccount); err != nil {
+		p.Log.Error("wake jobs waiting for an account", "error", err)
+	}
+	return p.Store.Q.GetUnit(ctx, u.ID)
+}
+
+// describeOverrides says how a unit's runs changed, kind by kind.
+func (p *Pipeline) describeOverrides(ctx context.Context, old, cur domain.RunOverrides) string {
+	names := map[string]string{}
+	if accounts, err := p.accounts(ctx); err == nil {
+		for _, a := range accounts {
+			names[a.ID] = a.Name
+		}
+	}
+	var parts []string
+	for _, kind := range domain.UnitRunKinds {
+		o, ok := cur[kind]
+		if o == old[kind] {
+			continue
+		}
+		if !ok {
+			parts = append(parts, kind+" as the project's settings say")
+			continue
+		}
+		var what []string
+		if o.Account != "" {
+			what = append(what, "on "+cmp.Or(names[o.Account], o.Account))
+		}
+		if o.Model != "" {
+			what = append(what, o.Model)
+		}
+		if o.Effort != "" {
+			what = append(what, o.Effort+" effort")
+		}
+		parts = append(parts, kind+" "+strings.Join(what, ", "))
+	}
+	return "runs changed for the next ones: " + strings.Join(parts, "; ")
 }
 
 // subagentsAllowed reads the unit's choice afresh: it may have changed

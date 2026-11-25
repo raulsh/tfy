@@ -26,6 +26,10 @@ WHERE id = @id AND (paused_until IS NULL OR paused_until < @until);
 -- Lifts the accounts' pauses and the blocks on their models alike.
 UPDATE accounts SET paused_until = NULL, pause_reason = '', model_blocks = '{}' WHERE id IN (sqlc.slice('ids'));
 
+-- name: LiftAccountPauses :exec
+-- Lifts the accounts' pauses; the blocks on their models stay.
+UPDATE accounts SET paused_until = NULL, pause_reason = '' WHERE id IN (sqlc.slice('ids'));
+
 -- name: SetAccountModelBlocks :exec
 UPDATE accounts SET model_blocks = @model_blocks WHERE id = @id;
 

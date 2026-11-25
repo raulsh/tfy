@@ -83,10 +83,15 @@ function AccountRow({ account: a, first, onEdit }: { account: Account; first: bo
 					{a.pause_reason && <span className="faint"> · {a.pause_reason}</span>}
 				</div>
 			)}
-			{Object.entries(a.model_blocks ?? {}).map(([model, until]) => (
+			{Object.entries(a.model_blocks ?? {}).map(([model, b]) => (
 				<div key={model} style={{ marginTop: 6, color: toneColor.warn, fontSize: 12.5 }}>
-					Cannot run <Mono>{model || "its default model"}</Mono> until {absTime(until)}
-					<span className="faint"> · its plan needs usage credits for it; other models run</span>
+					Cannot run <Mono>{model || "its default model"}</Mono> until {absTime(b.until)}
+					<span className="faint">
+						{" · "}
+						{b.cause === "limit"
+							? "its limit for this model is used up; other models run"
+							: "its plan needs usage credits for it; other models run"}
+					</span>
 				</div>
 			))}
 			{(a.paused_until || Object.keys(a.model_blocks ?? {}).length > 0) && (

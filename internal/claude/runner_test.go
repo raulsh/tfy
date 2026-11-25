@@ -220,6 +220,23 @@ func TestRunLimitedWithSubagents(t *testing.T) {
 	}
 }
 
+// Seen for real (2.1.332): a subscription used up Fable's own weekly window
+// while its five-hour and weekly ones still allowed. The run is rate
+// limited, and the refusal is of the model alone: the account's other
+// models still answer.
+func TestRunModelLimited(t *testing.T) {
+	out, _ := newFakeRun(t, "replay", "q12-model-limit").run(t, context.Background())
+	if out.Status != StatusRateLimited {
+		t.Fatalf("status = %s (%s), want rate limited", out.Status, out.Reason)
+	}
+	if rl := out.RateLimit; rl == nil || !rl.ModelLimited() || !rl.RefusesModel() || rl.NeedsCredits() {
+		t.Errorf("rate limit %+v: want the model's own limit", out.RateLimit)
+	}
+	if !strings.Contains(out.Reason, "Fable limit") {
+		t.Errorf("reason %q: want the CLI's words", out.Reason)
+	}
+}
+
 func TestRunWithoutResult(t *testing.T) {
 	out, _ := newFakeRun(t, "fail", "q1-empty").run(t, context.Background())
 	if out.Status != StatusFailed || out.ExitCode != 3 || !strings.Contains(out.Reason, "boom") {

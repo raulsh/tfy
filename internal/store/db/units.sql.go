@@ -358,6 +358,21 @@ func (q *Queries) SetUnitReviewIteration(ctx context.Context, arg SetUnitReviewI
 	return err
 }
 
+const setUnitRunOverrides = `-- name: SetUnitRunOverrides :exec
+UPDATE units SET run_overrides = ?1, updated_at = ?2 WHERE id = ?3
+`
+
+type SetUnitRunOverridesParams struct {
+	RunOverrides string    `json:"run_overrides"`
+	Now          time.Time `json:"now"`
+	ID           string    `json:"id"`
+}
+
+func (q *Queries) SetUnitRunOverrides(ctx context.Context, arg SetUnitRunOverridesParams) error {
+	_, err := q.db.ExecContext(ctx, setUnitRunOverrides, arg.RunOverrides, arg.Now, arg.ID)
+	return err
+}
+
 const setUnitSubagents = `-- name: SetUnitSubagents :exec
 UPDATE units SET subagents = ?1, updated_at = ?2 WHERE id = ?3
 `
