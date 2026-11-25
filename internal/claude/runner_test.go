@@ -203,6 +203,23 @@ func TestRunWaitsForResumedTurn(t *testing.T) {
 	}
 }
 
+// Seen for real (2.1.330): a session reached its usage limit while a
+// sub-agent worked. The sub-agent's failure woke it for a turn that never
+// reached the model, and the CLI reported that turn as a success with no
+// turns and no text. The run is rate limited all the same: taken for a
+// success, its unfinished work went on to be published.
+func TestRunLimitedWithSubagents(t *testing.T) {
+	f := newFakeRun(t, "replay", "q11-limit-subagents")
+	f.spec.PermissionMode = ModeAuto
+	out, _ := f.run(t, context.Background())
+	if out.Status != StatusRateLimited {
+		t.Fatalf("status = %s (%s), want rate limited", out.Status, out.Reason)
+	}
+	if r := out.Result; r.NumTurns != 12 || !strings.Contains(r.Result, "5-hour limit") {
+		t.Errorf("turns = %d, text %q: want the limited turn's", r.NumTurns, r.Result)
+	}
+}
+
 func TestRunWithoutResult(t *testing.T) {
 	out, _ := newFakeRun(t, "fail", "q1-empty").run(t, context.Background())
 	if out.Status != StatusFailed || out.ExitCode != 3 || !strings.Contains(out.Reason, "boom") {

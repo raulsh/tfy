@@ -124,14 +124,17 @@ func (p *Pipeline) review(ctx context.Context, job db.Job, u db.Unit) error {
 		if err != nil {
 			return err
 		}
-		diff, err := p.Git.Diff(ctx, ur.CheckoutPath, ur.BaseSha, head)
+		// Only the unit's own changes: not the default branch's, which the
+		// development run may have merged in.
+		base := p.branchBase(ctx, ur)
+		diff, err := p.Git.Diff(ctx, ur.CheckoutPath, base, head)
 		if err != nil {
 			return err
 		}
 		if len(diff) > maxDiff {
 			diff = diff[:maxDiff] + "\n\n[diff truncated: read the files in the checkout for the rest]\n"
 		}
-		log, _ := p.Git.Log(ctx, ur.CheckoutPath, ur.BaseSha, head)
+		log, _ := p.Git.Log(ctx, ur.CheckoutPath, base, head)
 		file := dirOf(ur) + ".diff"
 		if err := os.WriteFile(filepath.Join(reviewDir, file), []byte(diff), 0o644); err != nil {
 			return err

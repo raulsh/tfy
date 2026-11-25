@@ -51,7 +51,7 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 		if _, err := p.Git.CommitAll(ctx, ur.CheckoutPath, fmt.Sprintf("chore: include changes left uncommitted in %s", domain.Label(u.Seq))); err != nil {
 			return fmt.Errorf("commit leftovers in %s: %w", ur.FullName, err)
 		}
-		ahead, err := p.Git.Ahead(ctx, ur.CheckoutPath, ur.BaseSha, "HEAD")
+		ahead, err := p.Git.Ahead(ctx, ur.CheckoutPath, p.branchBase(ctx, ur), "HEAD")
 		if err != nil {
 			return err
 		}
@@ -105,6 +105,20 @@ func (p *Pipeline) publish(ctx context.Context, job db.Job, u db.Unit) error {
 		return err
 	}
 	return p.enqueue(ctx, JobReview, u, nil)
+}
+
+// branchBase is where a branch's own commits start: the default branch as
+// the development run last had it (base/<default>), which GitHub compares a
+// pull request with too. The commit the checkout started at does not do: a
+// run may merge the newer default branch in, and a branch that only caught
+// up with it has nothing to publish. A checkout without base/<default> falls
+// back to that commit.
+func (p *Pipeline) branchBase(ctx context.Context, ur db.ListUnitReposRow) string {
+	ref := "refs/remotes/base/" + ur.DefaultBranch
+	if _, err := p.Git.RevParse(ctx, ur.CheckoutPath, ref); err == nil {
+		return ref
+	}
+	return ur.BaseSha
 }
 
 // prSiblings are all the unit's pull requests, to link to each other.
