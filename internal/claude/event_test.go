@@ -126,6 +126,40 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
+// A limit refuses the model alone when the window that refused counts some
+// models only, and the account's own windows still allow.
+func TestRateLimitScope(t *testing.T) {
+	windows := func(statuses map[string]string) map[string]RateLimitWindow {
+		out := map[string]RateLimitWindow{}
+		for name, status := range statuses {
+			out[name] = RateLimitWindow{Status: status}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name    string
+		rl      RateLimit
+		model   bool
+		refuses bool
+	}{
+		{"five hours", RateLimit{Status: "rejected", RateLimitType: "five_hour", UnifiedWindows: windows(map[string]string{"five_hour": "rejected", "seven_day": "allowed"})}, false, false},
+		{"week", RateLimit{Status: "rejected", RateLimitType: "seven_day"}, false, false},
+		{"fable's week", RateLimit{Status: "rejected", RateLimitType: "seven_day_overage_included", UnifiedWindows: windows(map[string]string{"five_hour": "allowed", "seven_day": "allowed", "seven_day_overage_included": "rejected"})}, true, true},
+		{"opus's week", RateLimit{Status: "rejected", RateLimitType: "seven_day_opus"}, true, true},
+		{"the model's and the account's", RateLimit{Status: "rejected", RateLimitType: "seven_day_opus", UnifiedWindows: windows(map[string]string{"five_hour": "rejected", "seven_day_opus": "rejected"})}, false, false},
+		{"overage", RateLimit{Status: "rejected", RateLimitType: "overage"}, false, false},
+		{"credits", RateLimit{Status: "rejected", ErrorCode: "credits_required"}, false, true},
+		{"allowed", RateLimit{Status: "allowed_warning", RateLimitType: "seven_day_overage_included"}, false, false},
+	} {
+		if got := c.rl.ModelLimited(); got != c.model {
+			t.Errorf("%s: ModelLimited = %v", c.name, got)
+		}
+		if got := c.rl.RefusesModel(); got != c.refuses {
+			t.Errorf("%s: RefusesModel = %v", c.name, got)
+		}
+	}
+}
+
 func TestHookAndDenialEvents(t *testing.T) {
 	evs := loadFixture(t, "q2-deny")
 	var responses, denied int

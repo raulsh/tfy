@@ -158,6 +158,8 @@ func (r *Result) Structured() (json.RawMessage, bool) {
 type RateLimitWindow struct {
 	Utilization float64 `json:"utilization"`
 	ResetsAt    int64   `json:"resetsAt"`
+	// Status is the window's own: allowed, allowed_warning or rejected.
+	Status string `json:"status,omitempty"`
 }
 
 // RateLimit is rate_limit_event.rate_limit_info. It arrives on every run with
@@ -182,6 +184,33 @@ func (r *RateLimit) Limited() bool {
 // usage credits it does not have. Its other models still answer.
 func (r *RateLimit) NeedsCredits() bool {
 	return r.Limited() && r.ErrorCode == "credits_required"
+}
+
+// ModelLimited reports a limit on the model, not on the account: the window
+// that refused counts only some models, such as Fable's weekly one
+// (seven_day_overage_included), and the account's own windows still allow.
+// Its other models still answer (docs/spike.md).
+func (r *RateLimit) ModelLimited() bool {
+	if !r.Limited() || !modelWindow(r.RateLimitType) {
+		return false
+	}
+	for name, w := range r.UnifiedWindows {
+		if !modelWindow(name) && w.Status == "rejected" {
+			return false
+		}
+	}
+	return true
+}
+
+// RefusesModel reports a refusal of the model the run asked for, which
+// leaves the account free for its other models.
+func (r *RateLimit) RefusesModel() bool { return r.NeedsCredits() || r.ModelLimited() }
+
+// modelWindow reports whether a usage window counts only some models: it is
+// named after one of the account's windows (five_hour, seven_day), as
+// seven_day_opus is. Any other limit is the account's.
+func modelWindow(name string) bool {
+	return strings.HasPrefix(name, "five_hour_") || strings.HasPrefix(name, "seven_day_")
 }
 
 // HookEvent is system/hook_started and system/hook_response. ExitCode and

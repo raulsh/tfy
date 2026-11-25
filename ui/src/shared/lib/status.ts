@@ -107,6 +107,7 @@ export const attentionLabel: Record<string, string> = {
 	failed: "Failed",
 	budget_exceeded: "Over budget",
 	waiting: "Rate limited",
+	model_unavailable: "Model unavailable",
 	no_changes: "No changes",
 	conflict: "Conflict",
 	review_blocked: "Review blocked",

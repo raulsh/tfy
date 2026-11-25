@@ -98,6 +98,26 @@ func (q *Queries) GetAppSetting(ctx context.Context, key string) (string, error)
 	return value, err
 }
 
+const liftAccountPauses = `-- name: LiftAccountPauses :exec
+UPDATE accounts SET paused_until = NULL, pause_reason = '' WHERE id IN (/*SLICE:ids*/?)
+`
+
+// Lifts the accounts' pauses; the blocks on their models stay.
+func (q *Queries) LiftAccountPauses(ctx context.Context, ids []string) error {
+	query := liftAccountPauses
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, name, cli, kind, settings, paused_until, pause_reason, quota, quota_at, created_at, updated_at, model_blocks FROM accounts ORDER BY created_at, id
 `

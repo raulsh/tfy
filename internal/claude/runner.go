@@ -48,6 +48,10 @@ type Outcome struct {
 	// LimitedUntil, on a rate-limited outcome, is when the first of the
 	// accounts the run could use is free again. The pipeline sets it.
 	LimitedUntil time.Time
+	// ModelUnavailable, on a failed outcome, means none of the accounts the
+	// run could use can run its model for now: a person chooses another.
+	// The pipeline sets it.
+	ModelUnavailable bool
 }
 
 // Callbacks observe a run while it happens. Both are optional and are called
@@ -257,7 +261,7 @@ func (r *Runner) Run(ctx context.Context, spec *Spec, cb Callbacks) *Outcome {
 	// API's 429 (docs/spike.md).
 	case res.IsError && (mon.rateLimited || res.APIErrorStatus == 429):
 		out.Status, out.Reason = StatusRateLimited, "rate limited"
-		if rl := mon.rateLimit; rl != nil && rl.NeedsCredits() {
+		if rl := mon.rateLimit; rl != nil && rl.RefusesModel() {
 			out.Reason = clip(oneLine(res.Result), 300)
 		}
 	case res.IsError:

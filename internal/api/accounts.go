@@ -37,11 +37,12 @@ type AccountView struct {
 	HasSecret   bool                   `json:"has_secret"`
 	PausedUntil *time.Time             `json:"paused_until"`
 	PauseReason string                 `json:"pause_reason,omitempty"`
-	// ModelBlocks are the models it cannot run for now, until when.
-	ModelBlocks map[string]time.Time `json:"model_blocks"`
-	Quota       json.RawMessage      `json:"quota"`
-	CreatedAt   time.Time            `json:"created_at"`
-	UpdatedAt   time.Time            `json:"updated_at"`
+	// ModelBlocks are the models it cannot run for now, by family: until
+	// when, and why.
+	ModelBlocks map[string]domain.ModelBlock `json:"model_blocks"`
+	Quota       json.RawMessage              `json:"quota"`
+	CreatedAt   time.Time                    `json:"created_at"`
+	UpdatedAt   time.Time                    `json:"updated_at"`
 }
 
 func (s *Server) accountView(a db.Account) AccountView {
@@ -53,14 +54,7 @@ func (s *Server) accountView(a db.Account) AccountView {
 		t := a.PausedUntil.Time
 		v.PausedUntil, v.PauseReason = &t, a.PauseReason
 	}
-	var blocks map[string]time.Time
-	_ = json.Unmarshal([]byte(a.ModelBlocks), &blocks)
-	v.ModelBlocks = map[string]time.Time{}
-	for model, until := range blocks {
-		if until.After(time.Now()) {
-			v.ModelBlocks[model] = until
-		}
-	}
+	v.ModelBlocks = domain.ParseModelBlocks(a.ModelBlocks, time.Now())
 	if json.Valid([]byte(a.Quota)) {
 		v.Quota = json.RawMessage(a.Quota)
 	}

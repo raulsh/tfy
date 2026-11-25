@@ -24,7 +24,7 @@ import { IssuesCard } from "../components/IssuesCard";
 import { AttentionBanner, StageStepper, UnitActions, UnitStateTag } from "../components/parts";
 import { ReleasePanel } from "../components/ReleasePanel";
 import { RetrospectiveCard } from "../components/RetrospectiveCard";
-import { RunOverridesList } from "../components/RunOverrides";
+import { RunOverridesDetail } from "../components/RunOverrides";
 import { SubagentsSwitch } from "../components/SubagentsSwitch";
 import { useUnit } from "../hooks";
 
@@ -226,14 +226,7 @@ export default function UnitPage() {
 									["Review rounds", unit.review_iteration],
 									["Runs", `${unit.runs.length} (${usd(spend)})`],
 									["Sub-agents", <SubagentsSwitch key="s" unit={unit} />],
-									...(Object.keys(unit.run_overrides ?? {}).length > 0
-										? [
-												["Accounts and models", <RunOverridesList key="m" overrides={unit.run_overrides} />] as [
-													string,
-													ReactNode,
-												],
-											]
-										: []),
+									["Accounts and models", <RunOverridesDetail key="m" unit={unit} />],
 									[
 										"Workspace",
 										<Mono key="w" faint>

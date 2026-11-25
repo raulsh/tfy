@@ -75,18 +75,75 @@ type Account struct {
 	// PausedUntil is when the account's usage limit resets; zero if it is
 	// not limited.
 	PausedUntil time.Time
-	// ModelBlocks are models the account cannot run for now, such as one
-	// its plan has no usage credits for, until when.
-	ModelBlocks map[string]time.Time
+	// ModelBlocks are the models the account cannot run for now, by family
+	// (ModelFamily), such as one its plan has no usage credits for.
+	ModelBlocks map[string]ModelBlock
 }
 
 // Paused reports whether the account is still limited at t.
 func (a Account) Paused(t time.Time) bool { return a.PausedUntil.After(t) }
 
-// Blocked reports whether the account cannot run model at t, and until when.
-func (a Account) Blocked(model string, t time.Time) (time.Time, bool) {
-	until, ok := a.ModelBlocks[model]
-	return until, ok && until.After(t)
+// Blocked reports whether the account cannot run model at t, and why.
+func (a Account) Blocked(model string, t time.Time) (ModelBlock, bool) {
+	b, ok := a.ModelBlocks[ModelFamily(model)]
+	if !ok {
+		b, ok = a.ModelBlocks[model]
+	}
+	return b, ok && b.Until.After(t)
+}
+
+// Why an account cannot run a model for now.
+const (
+	// BlockCredits: its plan has no usage credits for the model.
+	BlockCredits = "credits"
+	// BlockLimit: the model's own usage window is used up, such as Fable's
+	// weekly one. The account's other models still run.
+	BlockLimit = "limit"
+)
+
+// ModelBlock keeps an account from running a model until a time.
+type ModelBlock struct {
+	Until time.Time `json:"until"`
+	Cause string    `json:"cause"`
+}
+
+// UnmarshalJSON reads a block, or a bare time as blocks were first stored:
+// those were all for want of credits.
+func (b *ModelBlock) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		b.Cause = BlockCredits
+		return json.Unmarshal(data, &b.Until)
+	}
+	type plain ModelBlock
+	return json.Unmarshal(data, (*plain)(b))
+}
+
+// ParseModelBlocks decodes accounts.model_blocks, leaving out the blocks
+// that ended before now.
+func ParseModelBlocks(raw string, now time.Time) map[string]ModelBlock {
+	var blocks map[string]ModelBlock
+	_ = json.Unmarshal([]byte(raw), &blocks)
+	out := map[string]ModelBlock{}
+	for model, b := range blocks {
+		if b.Until.After(now) {
+			out[model] = b
+		}
+	}
+	return out
+}
+
+// ModelFamily is the alias a model belongs to, such as fable for
+// claude-fable-5-2 or a Bedrock id of it, or the model itself when it names
+// none. A model's limits and credits are its family's: the CLI speaks of
+// "your Fable limit".
+func ModelFamily(model string) string {
+	m := strings.ToLower(model)
+	for _, alias := range claudeAliases {
+		if strings.Contains(m, alias) {
+			return alias
+		}
+	}
+	return m
 }
 
 // Validate checks an account; hasSecret tells whether its secret is set.

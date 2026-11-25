@@ -1,5 +1,6 @@
 import { AutoComplete, Select } from "antd";
 import type { Account, Engine, RunOverride, RunOverrides } from "@/shared/api/types";
+import { toneColor } from "@/shared/lib/status";
 
 // The kinds of run, in pipeline order, and what each one does.
 export const runKinds: [string, string][] = [
@@ -23,6 +24,7 @@ export function StageTable({
 	accounts,
 	engines,
 	inherited,
+	highlight,
 }: {
 	value?: RunOverrides;
 	onChange?: (v: RunOverrides) => void;
@@ -31,6 +33,8 @@ export function StageTable({
 	accounts: Account[];
 	engines: Engine[];
 	inherited: (kind: string) => RunOverride;
+	// The kind of run to point out, such as one that stopped.
+	highlight?: string;
 }) {
 	const set = (kind: string, patch: RunOverride) => {
 		const row = { ...value?.[kind], ...patch };
@@ -52,7 +56,12 @@ export function StageTable({
 				return (
 					<div key={kind} style={{ display: "contents" }}>
 						<div style={{ alignSelf: "center", minWidth: 0 }}>
-							<span style={{ fontWeight: 500 }}>{kind}</span> <span className="faint">{what}</span>
+							{kind === highlight ? (
+								<span style={{ fontWeight: 600, color: toneColor.warn }}>● {kind}</span>
+							) : (
+								<span style={{ fontWeight: 500 }}>{kind}</span>
+							)}{" "}
+							<span className="faint">{what}</span>
 						</div>
 						<Select
 							size="small"

@@ -25,32 +25,50 @@ func toAccount(a db.Account) domain.Account {
 	if a.PausedUntil.Valid {
 		out.PausedUntil = a.PausedUntil.Time
 	}
-	_ = json.Unmarshal([]byte(a.ModelBlocks), &out.ModelBlocks)
+	out.ModelBlocks = domain.ParseModelBlocks(a.ModelBlocks, time.Now())
 	return out
 }
 
-// blockModel keeps an account from running model until the given time,
-// leaving it free for others: its plan has no usage credits for it.
-func (p *Pipeline) blockModel(ctx context.Context, id, model string, until time.Time) {
+// blockModel keeps an account from running model, and the rest of its
+// family, leaving it free for other models: its plan has no usage credits
+// for it, or its own usage window is used up.
+func (p *Pipeline) blockModel(ctx context.Context, id, model string, block domain.ModelBlock) {
+	block.Until = block.Until.UTC()
+	p.editModelBlocks(ctx, id, func(blocks map[string]domain.ModelBlock) bool {
+		family := domain.ModelFamily(model)
+		if cur, ok := blocks[family]; ok && !block.Until.After(cur.Until) {
+			return false
+		}
+		blocks[family] = block
+		return true
+	})
+}
+
+// unblockModel lets an account try model again.
+func (p *Pipeline) unblockModel(ctx context.Context, id, model string) {
+	p.editModelBlocks(ctx, id, func(blocks map[string]domain.ModelBlock) bool {
+		n := len(blocks)
+		delete(blocks, domain.ModelFamily(model))
+		delete(blocks, model)
+		return len(blocks) < n
+	})
+}
+
+// editModelBlocks changes an account's model blocks with edit, which
+// reports whether it changed any. Blocks that ended are dropped.
+func (p *Pipeline) editModelBlocks(ctx context.Context, id string, edit func(map[string]domain.ModelBlock) bool) {
 	ctx = context.WithoutCancel(ctx)
 	row, err := p.Store.Q.GetAccount(ctx, id)
 	if err != nil {
 		return
 	}
-	blocks := map[string]time.Time{}
-	_ = json.Unmarshal([]byte(row.ModelBlocks), &blocks)
-	now := time.Now()
-	for m, t := range blocks {
-		if !t.After(now) {
-			delete(blocks, m)
-		}
-	}
-	if until.After(blocks[model]) {
-		blocks[model] = until.UTC()
+	blocks := domain.ParseModelBlocks(row.ModelBlocks, time.Now())
+	if !edit(blocks) {
+		return
 	}
 	b, _ := json.Marshal(blocks)
 	if err := p.Store.Q.SetAccountModelBlocks(ctx, db.SetAccountModelBlocksParams{ModelBlocks: string(b), ID: id}); err != nil {
-		p.Log.Error("block a model of an account", "account", id, "model", model, "error", err)
+		p.Log.Error("change the model blocks of an account", "account", id, "error", err)
 	}
 	p.changed("account", id)
 }
@@ -436,8 +454,10 @@ type Quota struct {
 }
 
 // resumeStageAccounts lifts the usage-limit pauses of the accounts a unit's
-// run of kind could use: a person retrying it knows better than the reset
-// time. Accounts still limited pause again on the first try.
+// run of kind could use, and their blocks on the model it runs: a person
+// retrying it knows better than the reset time. Blocks on other models
+// stay, so a retry on another model does not try them again. Accounts still
+// limited pause again on the first try.
 func (p *Pipeline) resumeStageAccounts(ctx context.Context, u db.Unit, kind string) {
 	if !slices.Contains(domain.RunKinds, kind) {
 		return
@@ -449,8 +469,9 @@ func (p *Pipeline) resumeStageAccounts(ctx context.Context, u db.Unit, kind stri
 	ids := make([]string, 0, len(as.Pool))
 	for _, a := range as.Pool {
 		ids = append(ids, a.ID)
+		p.unblockModel(ctx, a.ID, as.Model)
 	}
-	if err := p.Store.Q.ResumeAccounts(ctx, ids); err != nil {
+	if err := p.Store.Q.LiftAccountPauses(ctx, ids); err != nil {
 		p.Log.Error("resume accounts", "error", err)
 	}
 	p.accountsChanged(ctx, "")

@@ -150,6 +150,14 @@ Seen for real: a development run had three sub-agents working in the background 
 - Two results were then flushed together. The main turn's had `is_error: true`, `api_error_status: 429`, `api_error: "usage_limit_reached"` and `terminal_reason: "api_error"`, with the limit's text as `result`; its `subtype` was still `success`. The second was for a turn that a failed sub-agent's notification woke and that never reached the model: `is_error: false`, `num_turns: 0`, `duration_api_ms: 0`, an empty `result`, and `origin.kind: "task-notification"`.
 - tfy kept the last result, so the run counted as a success without its structured output, and its unfinished work went on to be published. Now a result with no turns that is not an error leaves the earlier outcome standing (`TestRunLimitedWithSubagents`): the run is rate limited, and its account pauses as at any usage limit.
 
+## A model's own usage limit (2.1.332, 2026-11-25)
+
+Seen for real: a subscription used up its Fable allowance while its other models still had room (`q12-model-limit`, trimmed from that run).
+- The first request was refused. The `rate_limit_event` had `status: "rejected"` and `rateLimitType: "seven_day_overage_included"`, a window of its own in `unifiedWindows` (utilization 1, `status: "rejected"`), while `five_hour` (0.62) and `seven_day` (0.73) were `allowed`. Its `resetsAt` was the weekly reset.
+- A synthetic assistant message and the result said "You've hit your Fable limit · resets Nov 27, … Switch to another model to continue." The result had `is_error: true`, `api_error_status: 429`, `api_error: "usage_limit_reached"`, one turn and no cost.
+- tfy took it for the account's limit and paused the account until the weekly reset, so its Opus and Sonnet runs waited too. Now a refusal from a window named after one of the account's (`seven_day_opus`, `seven_day_overage_included`), while `five_hour` and `seven_day` still allow, blocks the model's family on that account until the reset, as a refusal for want of usage credits does (`TestRunModelLimited`, `TestModelLimitMovesOnWithoutPausing`). Any other limit still pauses the account.
+- When no account can run the model, the unit stops as `model_unavailable` and says why. A person picks another model for that stage of the unit (or account, or effort), and retries; the retry lifts the blocks on the model it runs, and no others (`TestSwitchModelWhenNoAccountCanRunIt`).
+
 ## Another provider: Bedrock (2.1.289, 2026-10-04)
 
 Seen for real: after the subscription reached its five-hour limit, the CLI was switched to Bedrock (`CLAUDE_CODE_USE_BEDROCK` and an `AWS_PROFILE` in the `env` of `~/.claude/settings.json`), and retried runs did nothing.

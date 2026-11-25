@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func ids(as []Account) []string {
@@ -128,5 +129,30 @@ func TestRunSettings(t *testing.T) {
 	}
 	if p := ParseProjectSettings(`{"runs":{"accounts":["sub1"]}}`); !slices.Equal(p.Runs.Accounts, []string{"sub1"}) {
 		t.Errorf("project runs %+v", p.Runs)
+	}
+}
+
+// Blocks are read in both stored shapes, and match a model by family.
+func TestModelBlocks(t *testing.T) {
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	raw := `{"fable":"2026-12-01T00:00:00Z","opus":{"until":"2026-11-27T22:00:00Z","cause":"limit"},"haiku":{"until":"2026-11-20T00:00:00Z","cause":"limit"}}`
+	blocks := ParseModelBlocks(raw, now)
+	if len(blocks) != 2 {
+		t.Fatalf("blocks = %+v, want the two that have not ended", blocks)
+	}
+	if b := blocks["fable"]; b.Cause != BlockCredits || !b.Until.Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("a block stored as a bare time: %+v, want one for want of credits", b)
+	}
+	a := Account{ModelBlocks: blocks}
+	for model, want := range map[string]bool{"opus": true, "claude-opus-5-5": true, "us.anthropic.claude-fable-5-1-v1:0": true, "sonnet": false, "": false} {
+		if _, got := a.Blocked(model, now); got != want {
+			t.Errorf("Blocked(%q) = %v, want %v", model, got, want)
+		}
+	}
+	if _, got := a.Blocked("opus", time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC)); got {
+		t.Error("a block holds after it ends")
+	}
+	if f := ModelFamily("Opus[1m]"); f != "opus" {
+		t.Errorf("ModelFamily(Opus[1m]) = %q", f)
 	}
 }

@@ -415,25 +415,35 @@ func (s *Server) unitAction(c fiber.Ctx) error {
 	return ok(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
 }
 
-// updateUnit changes a unit's settings: for now, whether its runs may start
-// sub-agents.
+// updateUnit changes a unit's settings: whether its runs may start
+// sub-agents, and its own account, model and effort per kind of run.
 func (s *Server) updateUnit(c fiber.Ctx) error {
 	var in struct {
-		Subagents *bool  `json:"subagents"`
-		Actor     string `json:"actor"`
+		Subagents    *bool                `json:"subagents"`
+		RunOverrides *domain.RunOverrides `json:"run_overrides"`
+		Actor        string               `json:"actor"`
 	}
 	if err := c.Bind().Body(&in); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	if in.Subagents == nil {
+	if in.Subagents == nil && in.RunOverrides == nil {
 		return fiber.NewError(fiber.StatusBadRequest, "nothing to change")
 	}
-	u, err := s.Pipeline.SetSubagents(c.Context(), c.Params("id"), *in.Subagents, in.Actor)
-	if err != nil {
-		return err
+	ctx := c.Context()
+	var u db.Unit
+	var err error
+	if in.Subagents != nil {
+		if u, err = s.Pipeline.SetSubagents(ctx, c.Params("id"), *in.Subagents, in.Actor); err != nil {
+			return err
+		}
 	}
-	busy := s.Pipeline.Busy(c.Context(), u.ID)
-	return ok(c, unitView(u, busy, s.Pipeline.Actions(c.Context(), u, busy), ""))
+	if in.RunOverrides != nil {
+		if u, err = s.Pipeline.SetRunOverrides(ctx, c.Params("id"), *in.RunOverrides, in.Actor); err != nil {
+			return err
+		}
+	}
+	busy := s.Pipeline.Busy(ctx, u.ID)
+	return ok(c, unitView(u, busy, s.Pipeline.Actions(ctx, u, busy), ""))
 }
 
 // agents is what every run going now is doing, with its sub-agents.

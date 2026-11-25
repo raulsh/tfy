@@ -75,9 +75,11 @@ Runs sign in with **accounts**, set up in Settings → Accounts: more than one s
 
 Secrets stay in `~/.tfy/accounts`, readable by you alone, never in the database or in the API's answers. Runs get their account's credentials, and nothing else: an inherited `ANTHROPIC_API_KEY` or the provider in your Claude Code settings cannot sign a token account in elsewhere. The agent's shell commands, and the tests they start, see no model credentials at all.
 
-**Which account runs what.** A list of accounts, in order of preference, plus per stage an account, model and effort level: globally under Settings → Run stages, and per project in its Accounts tab, which wins. A new unit can override any stage too. A stage without an account runs on the first one in the list, and the config file still sets each stage's budget and time limit.
+**Which account runs what.** A list of accounts, in order of preference, plus per stage an account, model and effort level: globally under Settings → Run stages, and per project in its Accounts tab, which wins. A unit can override any stage too, when it is created or later from its page (Details → Accounts and models), from its next run on. A stage without an account runs on the first one in the list, and the config file still sets each stage's budget and time limit.
 
 **Usage limits.** When an account reaches its limit, tfy pauses it until its reset and the run carries on with the next account in the list, in the same session if it had got anywhere. A session does not move between providers, say a subscription and Bedrock: there the run starts over, told that some of the work may be done. When every account is limited, the unit waits, and work resumes as soon as one frees up. **Resume now** on an account, or **Retry** on a unit, tries again at once.
+
+A limit on one model, such as Fable's weekly allowance, or a model the plan needs usage credits for, blocks that model alone on the account: its runs of other models go on. When no account can run a stage's model, the unit stops and says so; **Change model** on it picks another model, account or effort for that stage of the unit, and retries.
 
 ## Conventions
 

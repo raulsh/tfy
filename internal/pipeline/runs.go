@@ -44,9 +44,13 @@ type runRequest struct {
 // runAgent runs req on the account its stage is assigned to. When that
 // account reaches its usage limit, the account is paused and the run carries
 // on with the next account that may run the stage: in the session the
-// limited run left, if it got anywhere, or with the request again. When every
-// account is limited, the outcome is rate_limited with the time the first one
-// is free. The returned run row is the last run's, in its final state.
+// limited run left, if it got anywhere, or with the request again. When the
+// account refuses the run's model alone, the model is blocked there instead,
+// and the account stays free for runs of other models. When every account is
+// limited, the outcome is rate_limited with the time the first one is free;
+// when none can run the model, it is a failure a person resolves by
+// choosing another. The returned run row is the last run's, in its final
+// state.
 func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claude.Outcome, error) {
 	as, err := p.assign(ctx, req)
 	if err != nil {
@@ -71,7 +75,7 @@ func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claud
 		if a == nil {
 			// No account can run the model: a person chooses another.
 			if next.until.IsZero() && len(next.blocked) > 0 {
-				return run, &claude.Outcome{Status: claude.StatusFailed, Reason: noAccountForModel(as.Model, next.blocked)}, nil
+				return run, &claude.Outcome{Status: claude.StatusFailed, Reason: noAccountForModel(req.Kind, as.Model, next.blocked), ModelUnavailable: true}, nil
 			}
 			if out == nil || out.Status != claude.StatusRateLimited {
 				out = &claude.Outcome{Status: claude.StatusRateLimited, Reason: "every account for this run is at its usage limit"}
@@ -99,17 +103,21 @@ func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claud
 		}
 		tried[a.ID] = true
 		resets := limitResets(out)
-		// A plan without credits for the model refuses that model alone.
-		if rl := out.RateLimit; rl != nil && rl.NeedsCredits() {
-			p.blockModel(ctx, a.ID, as.Model, resets)
-			if req.Unit.ID != "" {
-				p.activity(ctx, req.Unit.ID, "system", "account", fmt.Sprintf("%s cannot run %s without usage credits, until %s", a.Name, cmp.Or(as.Model, "its default model"), resets.Local().Format("Jan 2 15:04")), map[string]string{"account": a.ID, "run_id": run.ID})
+		note := fmt.Sprintf("%s reached its usage limit, until %s", a.Name, resets.Local().Format("Jan 2 15:04"))
+		// A refusal of the model alone, for want of credits or because its
+		// own window is used up, leaves the account to its other models.
+		if rl := out.RateLimit; rl != nil && rl.RefusesModel() {
+			block := domain.ModelBlock{Until: resets, Cause: domain.BlockLimit}
+			if rl.NeedsCredits() {
+				block.Cause = domain.BlockCredits
 			}
-			continue
+			p.blockModel(ctx, a.ID, as.Model, block)
+			note = a.Name + " " + blockText(as.Model, block) + ": its other models still run"
+		} else {
+			p.pauseAccount(ctx, a.ID, resets, fmt.Sprintf("the %s run reached the usage limit", req.Kind))
 		}
-		p.pauseAccount(ctx, a.ID, resets, fmt.Sprintf("the %s run reached the usage limit", req.Kind))
 		if req.Unit.ID != "" {
-			p.activity(ctx, req.Unit.ID, "system", "account", fmt.Sprintf("%s reached its usage limit, until %s", a.Name, resets.Local().Format("Jan 2 15:04")), map[string]string{"account": a.ID, "run_id": run.ID})
+			p.activity(ctx, req.Unit.ID, "system", "account", note, map[string]string{"account": a.ID, "run_id": run.ID})
 		}
 		// Work done so far is in the run's session: carry it on, on an
 		// account that can resume it.
@@ -122,15 +130,26 @@ func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claud
 	}
 }
 
-// noAccountForModel says why no account can run model, and what to do.
-func noAccountForModel(model string, blocked []domain.Account) string {
-	names := make([]string, 0, len(blocked))
+// noAccountForModel says why none of the accounts for a run of kind can run
+// model, and what a person can do.
+func noAccountForModel(kind, model string, blocked []domain.Account) string {
+	why := make([]string, 0, len(blocked))
 	for _, a := range blocked {
-		until, _ := a.Blocked(model, time.Time{})
-		names = append(names, fmt.Sprintf("%s (until %s)", a.Name, until.Local().Format("Jan 2 15:04")))
+		b, _ := a.Blocked(model, time.Time{})
+		why = append(why, a.Name+" "+blockText(model, b))
 	}
-	return fmt.Sprintf("none of the accounts for this run can run %s: it needs usage credits on %s. Choose another model for the stage, or add an account that has it",
-		cmp.Or(model, "its default model"), strings.Join(names, ", "))
+	name := cmp.Or(model, "its default model")
+	return fmt.Sprintf("none of the accounts for the %s run can run %s now: %s. Choose another model for the %s run, or add an account that can run %s",
+		kind, name, strings.Join(why, "; "), kind, name)
+}
+
+// blockText says why an account cannot run model, and until when.
+func blockText(model string, b domain.ModelBlock) string {
+	until := b.Until.Local().Format("Jan 2 15:04")
+	if b.Cause == domain.BlockLimit {
+		return fmt.Sprintf("reached its %s limit, until %s", cmp.Or(model, "default model's"), until)
+	}
+	return fmt.Sprintf("cannot run %s without usage credits, until %s", cmp.Or(model, "its default model"), until)
 }
 
 // continueRun asks the next account to carry on the session a limited run
@@ -460,9 +479,14 @@ type eventView struct {
 // error the job should end with.
 func (p *Pipeline) runFailed(ctx context.Context, u db.Unit, run db.Run, out *claude.Outcome) error {
 	reason := out.Reason
-	switch out.Status {
-	case claude.StatusRateLimited:
+	switch {
+	case out.Status == claude.StatusRateLimited:
 		return p.waitOnLimit(ctx, u, out)
+	case out.ModelUnavailable:
+		p.flag(ctx, u.ID, domain.AttentionModelUnavailable, reason)
+		return &stopError{fmt.Errorf("%s run: %s", run.Kind, reason)}
+	}
+	switch out.Status {
 	case claude.StatusBudgetExceeded:
 		p.flag(ctx, u.ID, domain.AttentionBudgetExceeded, fmt.Sprintf("the %s run reached its $%.2f budget", run.Kind, p.Config.Stage(run.Kind).Budget))
 	case claude.StatusCancelled:

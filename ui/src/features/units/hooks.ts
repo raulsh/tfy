@@ -84,6 +84,19 @@ export function useSetSubagents(unitId: string) {
 	});
 }
 
+// Replaces the unit's own account, model and effort per kind of run, from
+// its next run on.
+export function useSetRunOverrides(unitId: string) {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (o: RunOverrides) => api.patch<Unit>(`/units/${unitId}`, { run_overrides: o }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["unit", unitId] });
+			qc.invalidateQueries({ queryKey: ["units"] });
+		},
+	});
+}
+
 export function useCreateUnit() {
 	const qc = useQueryClient();
 	return useMutation({
