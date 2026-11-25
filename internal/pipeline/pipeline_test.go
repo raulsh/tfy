@@ -238,6 +238,19 @@ func fakeClaude() int {
 			if !strings.HasPrefix(strings.TrimSpace(string(b)), "tfy/") || len(listed) > 0 && !listed[d] {
 				continue
 			}
+			// $FAKE_CONTROL/catch-up names the checkouts the run first brings
+			// up to date with their default branch, and $FAKE_CONTROL/untouched
+			// those it then leaves as they are.
+			if controlLists("catch-up", d) {
+				if msg, err := exec.Command("git", "-C", d, "merge", "-q", "--ff-only", "base/main").CombinedOutput(); err != nil {
+					fmt.Fprintln(os.Stderr, string(msg))
+					return 1
+				}
+			}
+			if controlLists("untouched", d) {
+				repos = append(repos, map[string]any{"repo": d, "changed": false, "tests_run": false, "tests_passed": false})
+				continue
+			}
 			repos = append(repos, map[string]any{"repo": d, "changed": true, "tests_run": true, "tests_passed": true,
 				"pr_title": "fix: report degraded health", "pr_body": "## What\n\nHealth says degraded when the database is down (AC-1)."})
 			// Append, so every development round has something to commit.
@@ -275,6 +288,12 @@ func fakeClaude() int {
 		"session_id": sid, "result": resultText, "structured_output": out, "permission_denials": []any{},
 		"usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
 	return 0
+}
+
+// controlLists reports whether $FAKE_CONTROL/<name> lists word.
+func controlLists(name, word string) bool {
+	b, _ := os.ReadFile(filepath.Join(os.Getenv("FAKE_CONTROL"), name))
+	return slices.Contains(strings.Fields(string(b)), word)
 }
 
 // fakeSubagents acts out two sub-agents working in parallel, the way the
@@ -654,6 +673,14 @@ func fakeGH() int {
 		}
 		print(out)
 	case "pr create":
+		// GitHub refuses a pull request whose branch has nothing the base
+		// branch lacks.
+		base, head := flagValue(args, "--base"), flagValue(args, "--head")
+		bare := filepath.Join(os.Getenv("FAKE_REMOTES"), repo+".git")
+		if n, err := exec.Command("git", "-C", bare, "rev-list", "--count", "refs/heads/"+base+"..refs/heads/"+head).Output(); err == nil && strings.TrimSpace(string(n)) == "0" {
+			fmt.Fprintf(os.Stderr, "pull request create failed: GraphQL: No commits between %s and %s (createPullRequest)\n", base, head)
+			return 1
+		}
 		prs := loadPRs(repo)
 		body, _ := os.ReadFile(flagValue(args, "--body-file"))
 		n := len(prs) + 1

@@ -118,8 +118,15 @@ type Result struct {
 // session with sub-agents reports a result each time its turn ends, and
 // carries on when they report back. The cost is cumulative already; turns,
 // duration, tokens and denials are per turn. The structured output stays if
-// the last turn did not repeat it.
+// the last turn did not repeat it, and so does the outcome after a turn that
+// never reached the model: a session stopped at a usage limit is woken by its
+// failed sub-agents' notifications, and reports success with no turns and no
+// text (docs/spike.md).
 func (r *Result) mergeEarlier(prev *Result) {
+	if r.NumTurns == 0 && !r.IsError {
+		r.Subtype, r.IsError, r.Result = prev.Subtype, prev.IsError, prev.Result
+		r.TerminalReason, r.StopReason, r.APIErrorStatus = prev.TerminalReason, prev.StopReason, prev.APIErrorStatus
+	}
 	r.NumTurns += prev.NumTurns
 	r.DurationMS += prev.DurationMS
 	r.Usage.InputTokens += prev.Usage.InputTokens

@@ -143,6 +143,13 @@ What tfy does with this:
 - **The Agents view** comes from these events: `task_started` gives each sub-agent's name, type and prompt, its own messages give what it is doing now, `task_progress` its tool calls and tokens, and `SubagentHandback` its report.
 - **Not yet:** a checkout's own `.claude/agents`. Claude Code's documentation lets an agent's frontmatter set its own `permissionMode`, `hooks` and `mcpServers` (not checked here), so they need the same default-branch check as the repositories' hooks before tfy puts them in the workspace.
 
+## A usage limit while sub-agents work (2.1.330, 2026-11-23)
+
+Seen for real: a development run had three sub-agents working in the background when its subscription reached the five-hour limit (`q11-limit-subagents`, trimmed from that run).
+- A `rate_limit_event` with `status: "rejected"` came first. Each agent still working got a synthetic assistant message with the limit's text (`model: "<synthetic>"`, `error: "rate_limit"`), and each sub-agent ended with `task_updated` and `task_notification` at status `failed`.
+- Two results were then flushed together. The main turn's had `is_error: true`, `api_error_status: 429`, `api_error: "usage_limit_reached"` and `terminal_reason: "api_error"`, with the limit's text as `result`; its `subtype` was still `success`. The second was for a turn that a failed sub-agent's notification woke and that never reached the model: `is_error: false`, `num_turns: 0`, `duration_api_ms: 0`, an empty `result`, and `origin.kind: "task-notification"`.
+- tfy kept the last result, so the run counted as a success without its structured output, and its unfinished work went on to be published. Now a result with no turns that is not an error leaves the earlier outcome standing (`TestRunLimitedWithSubagents`): the run is rate limited, and its account pauses as at any usage limit.
+
 ## Another provider: Bedrock (2.1.289, 2026-10-04)
 
 Seen for real: after the subscription reached its five-hour limit, the CLI was switched to Bedrock (`CLAUDE_CODE_USE_BEDROCK` and an `AWS_PROFILE` in the `env` of `~/.claude/settings.json`), and retried runs did nothing.
