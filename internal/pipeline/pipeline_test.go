@@ -182,6 +182,9 @@ func fakeClaude() int {
 			cost := 0.0
 			if strings.TrimSpace(string(b)) == "worked" {
 				cost = 0.02
+				if flagValue(args, "--resume") != "" {
+					cost = 0.04
+				}
 			}
 			emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": map[string]any{
 				"status": "rejected", "rateLimitType": "five_hour", "resetsAt": time.Now().Add(time.Hour).Unix()}})

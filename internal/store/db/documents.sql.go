@@ -82,6 +82,25 @@ func (q *Queries) GetDocumentVersion(ctx context.Context, arg GetDocumentVersion
 	return i, err
 }
 
+const hasUnitDocumentSince = `-- name: HasUnitDocumentSince :one
+SELECT CAST(EXISTS(
+    SELECT 1 FROM documents
+    WHERE unit_id = ?1 AND created_at > ?2
+) AS INTEGER)
+`
+
+type HasUnitDocumentSinceParams struct {
+	UnitID string    `json:"unit_id"`
+	Since  time.Time `json:"since"`
+}
+
+func (q *Queries) HasUnitDocumentSince(ctx context.Context, arg HasUnitDocumentSinceParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, hasUnitDocumentSince, arg.UnitID, arg.Since)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const latestDocument = `-- name: LatestDocument :one
 SELECT id, unit_id, kind, version, content, meta, author, run_id, created_at FROM documents WHERE unit_id = ?1 AND kind = ?2 ORDER BY version DESC LIMIT 1
 `

@@ -86,6 +86,7 @@ var Profiles = map[string]Profile{
 		Guarded:        true,
 		ForbidPush:     true,
 		MaxDenials:     40,
+		Persist:        true,
 		Subagents:      true,
 	},
 	// learn looks back at a finished unit and may propose changes to the
@@ -98,6 +99,7 @@ var Profiles = map[string]Profile{
 		Guarded:        true,
 		ForbidPush:     true,
 		MaxDenials:     40,
+		Persist:        true,
 		Subagents:      true,
 	},
 	// issue weighs a linked GitHub issue against what tfy gathered; it only

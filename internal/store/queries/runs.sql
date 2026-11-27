@@ -33,6 +33,12 @@ SELECT * FROM runs
 WHERE unit_id = @unit_id AND kind = @kind AND session_id != '' AND status IN ('succeeded', 'failed', 'cancelled', 'timed_out', 'budget_exceeded', 'interrupted')
 ORDER BY created_at DESC LIMIT 1;
 
+-- name: ListUnitRuns :many
+-- Pipeline runs of a unit, newest first, excluding sidecar issue checks.
+SELECT * FROM runs
+WHERE unit_id = @unit_id AND kind != 'issue'
+ORDER BY created_at DESC, id DESC;
+
 -- name: ListLiveRuns :many
 SELECT * FROM runs WHERE status IN ('queued', 'running');
 

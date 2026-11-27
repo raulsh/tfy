@@ -7,6 +7,7 @@ import { Chip } from "@/shared/components/Chip";
 import { JsonView, Metric, Mono } from "@/shared/components/misc";
 import { Card, OverlayDrawer } from "@/shared/components/OverlayDrawer";
 import { StatusTag } from "@/shared/components/StatusTag";
+import { useOpenRun } from "@/shared/hooks/useOpenRun";
 import { useRunStream } from "@/shared/hooks/useRunStream";
 import { compact, duration, shortId, usd } from "@/shared/lib/format";
 import { isRunLive, runStatusLabel, runTone, toneColor } from "@/shared/lib/status";
@@ -17,6 +18,7 @@ import { EventTimeline } from "./EventTimeline";
 // live trace.
 export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => void }) {
 	const names = accountNames(useAccounts().data);
+	const openRun = useOpenRun();
 	const { data: run, isLoading } = useRun(runId);
 	const stream = useRunStream(runId);
 	const cancel = useCancelRun();
@@ -61,7 +63,15 @@ export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => v
 						<Chip k="effort" v={run.effort || "—"} mono />
 						<Chip k="mode" v={run.permission_mode || "—"} mono />
 						{run.session_id && <Chip k="session" v={run.session_id.slice(0, 8)} mono title={run.session_id} />}
-						{run.parent_run_id && <Chip k="resumed from" v={shortId(run.parent_run_id)} mono />}
+						{run.parent_run_id && (
+							<button
+								type="button"
+								onClick={() => openRun(run.parent_run_id)}
+								style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+							>
+								<Chip k="resumed from" v={shortId(run.parent_run_id)} mono />
+							</button>
+						)}
 						{run.prompt_version && <Chip k="prompt" v={run.prompt_version} mono />}
 					</>
 				)
@@ -114,7 +124,7 @@ export function RunDrawer({ runId, onClose }: { runId?: string; onClose: () => v
 						</Card>
 					)}
 					<Card title={live ? "Events (live)" : "Events"} padded={false}>
-						<EventTimeline events={stream.events} live={live} />
+						<EventTimeline events={stream.events} live={live} resumedFrom={run.parent_run_id || undefined} />
 					</Card>
 					{run.result != null && !live && (
 						<Card title="Result">

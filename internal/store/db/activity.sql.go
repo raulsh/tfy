@@ -73,6 +73,25 @@ func (q *Queries) DailyDone(ctx context.Context, since time.Time) ([]DailyDoneRo
 	return items, nil
 }
 
+const hasUnitActivitySince = `-- name: HasUnitActivitySince :one
+SELECT CAST(EXISTS(
+    SELECT 1 FROM activity
+    WHERE unit_id = ?1 AND kind IN ('transition', 'cleanup') AND at > ?2
+) AS INTEGER)
+`
+
+type HasUnitActivitySinceParams struct {
+	UnitID sql.NullString `json:"unit_id"`
+	Since  time.Time      `json:"since"`
+}
+
+func (q *Queries) HasUnitActivitySince(ctx context.Context, arg HasUnitActivitySinceParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, hasUnitActivitySince, arg.UnitID, arg.Since)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listRecentActivity = `-- name: ListRecentActivity :many
 SELECT id, unit_id, project_id, at, actor, kind, message, data FROM activity ORDER BY id DESC LIMIT ?1
 `

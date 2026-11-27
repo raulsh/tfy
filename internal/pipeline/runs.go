@@ -44,13 +44,14 @@ type runRequest struct {
 // runAgent runs req on the account its stage is assigned to. When that
 // account reaches its usage limit, the account is paused and the run carries
 // on with the next account that may run the stage: in the session the
-// limited run left, if it got anywhere, or with the request again. When the
-// account refuses the run's model alone, the model is blocked there instead,
-// and the account stays free for runs of other models. When every account is
-// limited, the outcome is rate_limited with the time the first one is free;
-// when none can run the model, it is a failure a person resolves by
-// choosing another. The returned run row is the last run's, in its final
-// state.
+// limited run left, if it got anywhere, or with the request again. When
+// every account is limited, the outcome is rate_limited with the time the
+// first one is free, and the next try picks up the last limited run's
+// session instead of starting over. When the account refuses the run's
+// model alone, the model is blocked there instead, and the account stays
+// free for runs of other models; when none can run the model, it is a
+// failure a person resolves by choosing another. The returned run row is
+// the last run's, in its final state.
 func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claude.Outcome, error) {
 	as, err := p.assign(ctx, req)
 	if err != nil {
@@ -62,6 +63,14 @@ func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claud
 	provider := ""
 	if req.Resume != nil {
 		provider = p.runProvider(ctx, *req.Resume)
+	}
+	continued := false
+	if prev, ok := p.unfinishedLimitedRun(ctx, req); ok {
+		if req, err = continueRun(req, prev); err != nil {
+			return db.Run{}, nil, err
+		}
+		provider = p.runProvider(ctx, prev)
+		continued = true
 	}
 	tried := map[string]bool{}
 	run, out := db.Run{Kind: req.Kind}, (*claude.Outcome)(nil)
@@ -87,10 +96,10 @@ func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claud
 			return run, out, nil
 		}
 		if next.moved {
-			req, provider = orig, ""
+			req, provider, continued = orig, "", false
 			req.Prompt += "\nAn earlier attempt at this task, with another account, stopped part-way at a usage limit: the workspace may hold some of its work already. Look at what is there before you start, and build on it.\n"
 		}
-		if len(tried) > 0 && req.Unit.ID != "" {
+		if (len(tried) > 0 || continued) && req.Unit.ID != "" {
 			p.activity(ctx, req.Unit.ID, "system", "account", fmt.Sprintf("the %s run carries on with %s", req.Kind, a.Name), map[string]string{"account": a.ID})
 		}
 		// An account is free: the unit no longer waits for one.
@@ -121,13 +130,55 @@ func (p *Pipeline) runAgent(ctx context.Context, req runRequest) (db.Run, *claud
 		}
 		// Work done so far is in the run's session: carry it on, on an
 		// account that can resume it.
-		if r := out.Result; r != nil && r.TotalCostUSD > 0 && run.SessionID != "" && claude.Profiles[req.Kind].Persist {
+		if runDidWork(run) && run.SessionID != "" && claude.Profiles[req.Kind].Persist {
 			if req, err = continueRun(req, run); err != nil {
 				return run, out, err
 			}
 			provider = claude.Provider(a)
 		}
 	}
+}
+
+// runDidWork reports whether a run made progress beyond being turned away
+// before the model answered.
+func runDidWork(r db.Run) bool {
+	return r.CostUsd > 0 || r.Turns > 1 || r.OutputTokens > 0
+}
+
+// unfinishedLimitedRun returns the most recent rate-limited run of req.Kind
+// for req.Unit that made progress and still belongs to this attempt, so a
+// retried job carries on its session instead of starting over.
+func (p *Pipeline) unfinishedLimitedRun(ctx context.Context, req runRequest) (db.Run, bool) {
+	if req.Unit.ID == "" || !claude.Profiles[req.Kind].Persist {
+		return db.Run{}, false
+	}
+	runs, err := p.Store.Q.ListUnitRuns(ctx, store.NullString(req.Unit.ID))
+	if err != nil {
+		return db.Run{}, false
+	}
+	cwd := cmp.Or(req.Cwd, req.Unit.WorkspacePath)
+	var cand db.Run
+	for _, r := range runs {
+		if r.Kind != req.Kind || r.Status != string(claude.StatusRateLimited) {
+			break
+		}
+		if r.SessionID != "" && runDidWork(r) && r.Cwd == cwd {
+			cand = r
+			break
+		}
+	}
+	if cand.ID == "" {
+		return db.Run{}, false
+	}
+	moved, err := p.Store.Q.HasUnitActivitySince(ctx, db.HasUnitActivitySinceParams{UnitID: store.NullString(req.Unit.ID), Since: cand.CreatedAt})
+	if err != nil || moved != 0 {
+		return db.Run{}, false
+	}
+	edited, err := p.Store.Q.HasUnitDocumentSince(ctx, db.HasUnitDocumentSinceParams{UnitID: req.Unit.ID, Since: cand.CreatedAt})
+	if err != nil || edited != 0 {
+		return db.Run{}, false
+	}
+	return cand, true
 }
 
 // noAccountForModel says why none of the accounts for a run of kind can run
@@ -187,9 +238,10 @@ func (p *Pipeline) nextAccount(ctx context.Context, pool []domain.Account, tried
 	for _, a := range accounts {
 		fresh[a.ID] = a
 	}
-	// No account of the session's provider: try the session where it is
-	// assigned rather than not at all.
-	if !slices.ContainsFunc(pool, func(a domain.Account) bool { return claude.Provider(&a) == provider }) {
+	// No account of the session's provider: a request that must keep its
+	// session tries it where it is assigned rather than not at all; one that
+	// can start over moves there instead.
+	if !startOver && !slices.ContainsFunc(pool, func(a domain.Account) bool { return claude.Provider(&a) == provider }) {
 		provider = ""
 	}
 	now := time.Now()
