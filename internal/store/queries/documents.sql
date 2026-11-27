@@ -14,3 +14,9 @@ SELECT * FROM documents WHERE unit_id = @unit_id AND kind = @kind AND version = 
 -- name: ListDocumentVersions :many
 SELECT id, kind, version, author, run_id, created_at FROM documents
 WHERE unit_id = @unit_id AND kind = @kind ORDER BY version DESC;
+
+-- name: HasUnitDocumentSince :one
+SELECT CAST(EXISTS(
+    SELECT 1 FROM documents
+    WHERE unit_id = @unit_id AND created_at > @since
+) AS INTEGER);

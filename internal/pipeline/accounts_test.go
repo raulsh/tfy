@@ -537,3 +537,231 @@ func TestRunOverridesWakeAWaitingJob(t *testing.T) {
 		t.Errorf("define runs: %+v", rs)
 	}
 }
+
+// When every account hits its usage limit mid-run, the job waits and later
+// tries again in the last session that made progress instead of starting
+// over. Subsequent immediate $0 rejections never displace that session.
+func TestWaitAndWakeResumesLimitedSession(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.addAccount("sub1", domain.AccountToken, domain.AccountSettings{}, "tok1")
+	h.addAccount("sub2", domain.AccountToken, domain.AccountSettings{}, "tok2")
+	pr := h.project()
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"sub1", "sub2"}})
+	h.setControl("rate-limited-tok1", "worked")
+	h.setControl("rate-limited-tok2", "worked")
+
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueued := func(wantRuns int) {
+		t.Helper()
+		h.waitIdle("the define job to wait for an account", func() bool {
+			var status, waiting string
+			_ = h.st.DB.QueryRow(`SELECT status, waiting_on FROM jobs WHERE unit_id = ? ORDER BY created_at DESC LIMIT 1`, u.ID).Scan(&status, &waiting)
+			return status == jobs.StatusQueued && waiting == jobs.WaitAccount && len(h.runs(u.ID, "define")) == wantRuns
+		})
+	}
+	waitQueued(2)
+
+	// Next attempt: both accounts are turned away at $0 before doing any work.
+	h.setControl("rate-limited-tok1", "")
+	h.setControl("rate-limited-tok2", "")
+	if err := h.p.ResumeAccount(ctx, "sub1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.p.ResumeAccount(ctx, "sub2"); err != nil {
+		t.Fatal(err)
+	}
+	waitQueued(4)
+
+	// Finally an account is free: it must pick up rs[1]'s session, skipping the
+	// two $0 rejections rs[2] and rs[3].
+	if err := h.p.ResumeAccount(ctx, "sub1"); err != nil {
+		t.Fatal(err)
+	}
+	if u = h.waitState(u.ID, domain.StateDefinitionReview); u.Attention != "" {
+		t.Errorf("the unit still waits: %s", u.AttentionDetail)
+	}
+	rs := h.runs(u.ID, "define")
+	if len(rs) != 5 {
+		t.Fatalf("define runs (%d): %+v", len(rs), rs)
+	}
+	if rs[1].ParentRunID != rs[0].ID {
+		t.Errorf("failover run parent = %q, want %q", rs[1].ParentRunID, rs[0].ID)
+	}
+	for i := 2; i <= 4; i++ {
+		if rs[i].ParentRunID != rs[1].ID {
+			t.Errorf("run %d parent = %q, want %q (last run that did work)", i, rs[i].ParentRunID, rs[1].ID)
+		}
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(h.read(filepath.Join(h.control, "args-define.json"))), &args); err != nil {
+		t.Fatal(err)
+	}
+	if flagValue(args, "--resume") != rs[1].SessionID || !slices.Contains(args, "--fork-session") {
+		t.Errorf("resumed run args = %v, want --resume %s --fork-session", args, rs[1].SessionID)
+	}
+	if p := h.read(filepath.Join(h.control, "prompt-define.txt")); !strings.Contains(p, "reached its usage limit") {
+		t.Errorf("resumed run did not get continue prompt:\n%s", p)
+	}
+}
+
+// Cancelling and retrying after a rate limit carries on the limited session,
+// unless an input document changed in the meantime; revisions carry on only
+// when the revision itself got work done before hitting the limit.
+func TestRetryAndRevisionsResumeLimitedSessions(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.addAccount("sub1", domain.AccountToken, domain.AccountSettings{}, "tok1")
+	pr := h.project()
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"sub1"}})
+	h.setControl("rate-limited-tok1", "worked")
+
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount := func(kind string, wantRuns int) {
+		t.Helper()
+		h.waitIdle("job waiting for account", func() bool {
+			var status, waiting string
+			_ = h.st.DB.QueryRow(`SELECT status, waiting_on FROM jobs WHERE unit_id = ? ORDER BY created_at DESC LIMIT 1`, u.ID).Scan(&status, &waiting)
+			return status == jobs.StatusQueued && waiting == jobs.WaitAccount && len(h.runs(u.ID, kind)) == wantRuns
+		})
+	}
+	waitForAccount("define", 1)
+
+	// Cancel + manual Retry still picks up the limited define session.
+	for _, action := range []string{ActionCancel, ActionRetry} {
+		if _, err := h.p.Act(ctx, u.ID, action, ActionInput{}); err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+	}
+	u = h.waitState(u.ID, domain.StateDefinitionReview)
+	if rs := h.runs(u.ID, "define"); len(rs) != 2 || rs[1].ParentRunID != rs[0].ID {
+		t.Fatalf("cancel+retry define runs: %+v", rs)
+	}
+
+	// Revision immediately turned away at $0 must re-send the revision prompt
+	// on the succeeded define session, not continue.tmpl.
+	h.setControl("rate-limited-tok1", "")
+	if _, err := h.p.Act(ctx, u.ID, ActionIterate, ActionInput{Feedback: "Mention HTTP 503."}); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount("define", 3)
+	if err := h.p.ResumeAccount(ctx, "sub1"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("define revision after $0 limit", func() bool { return len(h.runs(u.ID, "define")) == 4 && !h.p.Busy(ctx, u.ID) })
+	rs := h.runs(u.ID, "define")
+	if rs[3].ParentRunID != rs[1].ID {
+		t.Errorf("revision after $0 limit resumed %q, want succeeded run %q", rs[3].ParentRunID, rs[1].ID)
+	}
+	if p := h.read(filepath.Join(h.control, "prompt-define.txt")); !strings.Contains(p, "Mention HTTP 503.") {
+		t.Errorf("revision after $0 limit lost revision feedback:\n%s", p)
+	}
+
+	// Revision that did work before hitting the limit resumes that revision run.
+	h.setControl("rate-limited-tok1", "worked")
+	if _, err := h.p.Act(ctx, u.ID, ActionIterate, ActionInput{Feedback: "Add timeout requirement."}); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount("define", 5)
+	if err := h.p.ResumeAccount(ctx, "sub1"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("define revision after worked limit", func() bool { return len(h.runs(u.ID, "define")) == 6 && !h.p.Busy(ctx, u.ID) })
+	rs = h.runs(u.ID, "define")
+	if rs[5].ParentRunID != rs[4].ID {
+		t.Errorf("revision after worked limit resumed %q, want limited revision %q", rs[5].ParentRunID, rs[4].ID)
+	}
+	if p := h.read(filepath.Join(h.control, "prompt-define.txt")); !strings.Contains(p, "reached its usage limit") {
+		t.Errorf("revision after worked limit did not get continue prompt:\n%s", p)
+	}
+
+	// If a person edits the requirement after cancelling a limited plan run,
+	// retrying plan starts fresh so the edit is read.
+	h.setControl("rate-limited-tok1", "worked")
+	if _, err := h.p.Act(ctx, u.ID, ActionMarkReady, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount("plan", 1)
+	if _, err := h.p.Act(ctx, u.ID, ActionCancel, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.p.SaveDocument(ctx, u.ID, DocRequirement, "# Requirement\n\nEdited by a person.\n", "dev"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.p.Act(ctx, u.ID, ActionRetry, ActionInput{}); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(u.ID, domain.StateSpecReview)
+	if prs := h.runs(u.ID, "plan"); len(prs) != 2 || prs[1].ParentRunID != "" {
+		t.Errorf("plan after requirement edit must start fresh: %+v", prs)
+	}
+}
+
+// Switching the model while waiting on a rate limit carries on the limited
+// run's session on the new model; switching to another provider starts over.
+func TestSwitchModelOrProviderWhileWaitingOnLimitedSession(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.addAccount("sub1", domain.AccountToken, domain.AccountSettings{}, "tok1")
+	h.addAccount("sub2", domain.AccountToken, domain.AccountSettings{}, "tok2")
+	h.addAccount("bedrock", domain.AccountBedrock, domain.AccountSettings{Region: "us-east-1", AWSProfile: "bedrock"}, "")
+	pr := h.project()
+	// Model switch within the same provider keeps the session.
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"sub1", "sub2"}, Stages: domain.RunOverrides{"define": {Model: "fable"}}})
+	h.setControl("rate-limited-tok1", "worked")
+	h.setControl("credits-required-tok2", "fable")
+
+	u, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies when the DB is down"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("waiting on limit", func() bool {
+		var waiting string
+		_ = h.st.DB.QueryRow(`SELECT waiting_on FROM jobs WHERE unit_id = ? AND status = 'queued'`, u.ID).Scan(&waiting)
+		return waiting == jobs.WaitAccount
+	})
+	if _, err := h.p.SetRunOverrides(ctx, u.ID, domain.RunOverrides{"define": {Model: "sonnet"}}, "dev"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(u.ID, domain.StateDefinitionReview)
+	rs := h.runs(u.ID, "define")
+	if len(rs) != 3 || rs[2].AccountID != "sub2" || rs[2].Model != "sonnet" || rs[2].ParentRunID != rs[0].ID {
+		t.Fatalf("model switch while waiting must resume rs[0]: %+v", rs)
+	}
+
+	// Switching to another provider while waiting starts over with the note.
+	h.useAccounts(pr, domain.RunSettings{Accounts: []string{"bedrock", "sub2"}})
+	h.p.pauseAccount(ctx, "sub2", time.Now().Add(time.Hour), "test")
+	h.setControl("rate-limited", "worked")
+	u2, err := h.p.CreateUnit(ctx, CreateUnitInput{ProjectID: pr.ID, Kind: "bugfix", Title: "Health lies on bedrock",
+		RunOverrides: domain.RunOverrides{"define": {Account: "bedrock"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.waitIdle("bedrock waiting on limit", func() bool {
+		var waiting string
+		_ = h.st.DB.QueryRow(`SELECT waiting_on FROM jobs WHERE unit_id = ? AND status = 'queued'`, u2.ID).Scan(&waiting)
+		return waiting == jobs.WaitAccount
+	})
+	// Switch the unit to sub2 before unpausing it so waking runs on sub2.
+	if _, err := h.p.SetRunOverrides(ctx, u2.ID, domain.RunOverrides{"define": {Account: "sub2"}}, "dev"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.p.ResumeAccount(ctx, "sub2"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(u2.ID, domain.StateDefinitionReview)
+	rs2 := h.runs(u2.ID, "define")
+	if len(rs2) != 2 || rs2[1].AccountID != "sub2" || rs2[1].ParentRunID != "" {
+		t.Fatalf("provider switch while waiting must start over: %+v", rs2)
+	}
+	if p := h.read(filepath.Join(h.control, "prompt-define.txt")); !strings.Contains(p, "An earlier attempt at this task") {
+		t.Errorf("provider switch did not get start-over note:\n%s", p)
+	}
+}

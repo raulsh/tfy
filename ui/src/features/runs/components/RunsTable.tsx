@@ -13,7 +13,25 @@ export function RunsTable({ runs, loading, showUnit = true }: { runs: Run[]; loa
 	const names = accountNames(useAccounts().data);
 	const openRun = useOpenRun();
 	const columns: ColumnsType<Run> = [
-		{ title: "Run", dataIndex: "id", width: 96, render: (v: string) => <Mono faint>{shortId(v)}</Mono> },
+		{
+			title: "Run",
+			dataIndex: "id",
+			width: 168,
+			render: (v: string, r: Run) => (
+				<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+					<Mono faint>{shortId(v)}</Mono>
+					{r.parent_run_id && (
+						<span
+							className="mono faint"
+							style={{ fontSize: 11.5 }}
+							title={`Continues conversation from run ${shortId(r.parent_run_id)}`}
+						>
+							↳ {shortId(r.parent_run_id)}
+						</span>
+					)}
+				</span>
+			),
+		},
 		{
 			title: "Kind",
 			dataIndex: "kind",

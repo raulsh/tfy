@@ -14,7 +14,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { status as statusColors, toolColors } from "@/app/theme/tokens";
 import type { RunEvent } from "@/shared/api/types";
 import { JsonView } from "@/shared/components/misc";
-import { duration } from "@/shared/lib/format";
+import { duration, shortId } from "@/shared/lib/format";
 
 // A row of the waterfall: a span (a tool call, from its request to its
 // result) or a point (a message, a denial, the result).
@@ -65,7 +65,7 @@ function resultText(b: ContentBlock): string {
 	return "";
 }
 
-function buildRows(events: RunEvent[]): Row[] {
+function buildRows(events: RunEvent[], resumedFrom?: string): Row[] {
 	const rows: Row[] = [];
 	const byToolUse = new Map<string, Row>();
 	// Sub-agents: the Agent call's row by task, and each call's depth.
@@ -121,8 +121,8 @@ function buildRows(events: RunEvent[]): Row[] {
 						key: `${ev.seq}`,
 						start: at,
 						icon: <Play size={13} />,
-						label: "Session started",
-						detail: `${p.model ?? ""} · ${p.permissionMode ?? ""} mode · ${(p.tools as string[] | undefined)?.length ?? 0} tools`,
+						label: resumedFrom ? "Session resumed" : "Session started",
+						detail: `${resumedFrom ? `from ${shortId(resumedFrom)} · ` : ""}${p.model ?? ""} · ${p.permissionMode ?? ""} mode · ${(p.tools as string[] | undefined)?.length ?? 0} tools`,
 						color: statusColors.info,
 						payload: p,
 					});
@@ -285,8 +285,16 @@ function nest(rows: Row[]): Row[] {
 }
 
 // The run as a trace: time offset, what happened, and a waterfall bar.
-export function EventTimeline({ events, live }: { events: RunEvent[]; live: boolean }) {
-	const rows = useMemo(() => buildRows(events), [events]);
+export function EventTimeline({
+	events,
+	live,
+	resumedFrom,
+}: {
+	events: RunEvent[];
+	live: boolean;
+	resumedFrom?: string;
+}) {
+	const rows = useMemo(() => buildRows(events, resumedFrom), [events, resumedFrom]);
 	const [open, setOpen] = useState<Record<string, boolean>>({});
 	const [now, setNow] = useState(Date.now());
 	const bottom = useRef<HTMLDivElement>(null);

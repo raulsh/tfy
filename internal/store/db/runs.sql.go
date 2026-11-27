@@ -408,6 +408,63 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]ListRunsR
 	return items, nil
 }
 
+const listUnitRuns = `-- name: ListUnitRuns :many
+SELECT id, unit_id, project_id, parent_run_id, kind, status, reason, session_id, model, effort, permission_mode, prompt_version, cwd, pid, cost_usd, cost_total_usd, input_tokens, output_tokens, turns, denials, result, created_at, started_at, ended_at, account_id, engine FROM runs
+WHERE unit_id = ?1 AND kind != 'issue'
+ORDER BY created_at DESC, id DESC
+`
+
+// Pipeline runs of a unit, newest first, excluding sidecar issue checks.
+func (q *Queries) ListUnitRuns(ctx context.Context, unitID sql.NullString) ([]Run, error) {
+	rows, err := q.db.QueryContext(ctx, listUnitRuns, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.UnitID,
+			&i.ProjectID,
+			&i.ParentRunID,
+			&i.Kind,
+			&i.Status,
+			&i.Reason,
+			&i.SessionID,
+			&i.Model,
+			&i.Effort,
+			&i.PermissionMode,
+			&i.PromptVersion,
+			&i.Cwd,
+			&i.Pid,
+			&i.CostUsd,
+			&i.CostTotalUsd,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.Turns,
+			&i.Denials,
+			&i.Result,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.AccountID,
+			&i.Engine,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setRunSession = `-- name: SetRunSession :exec
 UPDATE runs SET session_id = ?1 WHERE id = ?2
 `
